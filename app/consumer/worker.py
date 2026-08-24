@@ -1,0 +1,55 @@
+import asyncio
+import logging
+
+from pydantic import ValidationError
+from redis.asyncio import Redis
+
+from app.config import settings
+from app.database import connect_to_mongo, get_database
+from app.services.ingestion import record_event
+
+from .translation import translate_event
+
+STREAM = "devboard:events"
+GROUP = "devboard-analytics-group"
+CONSUMER = "devboard-analytics-1"
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+async def ensure_group(redis: Redis) -> None:
+    try:
+        await redis.xgroup_create(STREAM, GROUP, id="0", mkstream=True)
+        logger.info("Consumer group created.")
+    except Exception:  # noqa: BLE001
+        logger.info("Consumer group already exists.")
+
+async def run() -> None:
+    await connect_to_mongo()
+    db = get_database()
+    redis = Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_timeout=10)
+    await ensure_group(redis)
+    logger.info("Consumer started, waiting for events...")
+
+    while True:
+        try:
+            results = await redis.xreadgroup(GROUP, CONSUMER, {STREAM: ">"}, count=10, block=5000)
+            if not results:
+                continue
+
+            for stream, messages in results:
+                for message_id, data in messages: # type: ignore
+                    try:
+                        event=translate_event(data)
+                        await record_event(event, db)
+                        await redis.xack(STREAM, GROUP, message_id)
+                        logger.info(f"Processed {event.action} for {event.entity_key}")
+                    except (ValidationError, ValueError, KeyError) as e:
+                        logger.error(f"Failed to process event {data}: {e}")
+        except Exception as e :  # noqa: BLE001
+            logger.error(f"Consumer error: {e}")
+            await asyncio.sleep(2)
+
+if __name__ == "__main__":
+    asyncio.run(run())

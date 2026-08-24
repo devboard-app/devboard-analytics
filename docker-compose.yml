@@ -9,6 +9,16 @@ services:
       - "8006:8000"
     networks:
       - devboard-network
+      
+  devboard-analytics-worker:
+    build:
+      context: .
+    container_name: devboard-analytics-worker
+    restart: unless-stopped
+    env_file: .env
+    command: python -m app.consumer.worker
+    networks:
+      - devboard-network
 
 networks:
   devboard-network:
