@@ -1,0 +1,16 @@
+services:
+  devboard-analytics:
+    build:
+      context: .
+    container_name: devboard-analytics
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8006:8000"
+    networks:
+      - devboard-network
+
+networks:
+  devboard-network:
+    name: devboard-network
+    external: true
