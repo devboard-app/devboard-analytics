@@ -25,9 +25,9 @@ async def health():
 
 
 @app.get("/health/db")
-async def health_db(db: AsyncIOMotorDatabase = Depends(get_database)):
+async def health_db(db: AsyncIOMotorDatabase = Depends(get_database)):  # noqa: B008
     try:
         await db.command("ping")
         return JSONResponse(status_code=200, content={"status": "ok"})
-    except Exception:
+    except Exception:  # noqa: BLE001
         return JSONResponse(status_code=500, content={"status": "error", "details": "db unavailable"})
