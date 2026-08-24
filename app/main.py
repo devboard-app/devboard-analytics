@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.database import close_mongo_connection, connect_to_mongo, get_database
+from app.routers.events import router as events_router
 
 
 @asynccontextmanager
@@ -18,6 +19,7 @@ app = FastAPI(
     title="Devboard Analytics Service",
     lifespan = lifespan
 )
+app.include_router(events_router)
 
 @app.get("/health")
 async def health():
