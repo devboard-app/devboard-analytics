@@ -3,6 +3,7 @@ import logging
 
 from pydantic import ValidationError
 from redis.asyncio import Redis
+from redis.exceptions import ResponseError
 
 from app.config import settings
 from app.database import connect_to_mongo, get_database
@@ -22,8 +23,11 @@ async def ensure_group(redis: Redis) -> None:
     try:
         await redis.xgroup_create(STREAM, GROUP, id="0", mkstream=True)
         logger.info("Consumer group created.")
-    except Exception:  # noqa: BLE001
-        logger.info("Consumer group already exists.")
+    except ResponseError as e:  
+        if "BUSYGROUP" in str(e):
+            logger.info("Consumer group already exists.")
+        else:
+            raise
 
 async def run() -> None:
     await connect_to_mongo()
