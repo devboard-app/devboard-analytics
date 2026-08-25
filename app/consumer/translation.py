@@ -6,6 +6,7 @@ from app.schemas.events import (
     EmptyMetadata,
     EpicMetadata,
     LabelMetadata,
+    SprintAssignmentMetadata,
     UpdatedMetadata,
 )
 
@@ -112,4 +113,14 @@ def translate_event(data: dict) -> ActivityEvent:
             metadata=LabelMetadata(label_id=UUID(data["label_id"]), label_name=data.get("label_name")),
         )
 
+    if event_type in ("ticket.sprint_added", "ticket.sprint_removed"):
+        return ActivityEvent(
+            actor=UUID(data["actor_id"]),
+            action=event_type,
+            entity_type="ticket",
+            entity_id=UUID(data["ticket_id"]),
+            entity_key=data["ticket_key"],
+            project_id=UUID(data["project_id"]),
+            metadata=SprintAssignmentMetadata(sprint_id=UUID(data["sprint_id"]), sprint_name=data.get("sprint_name")),
+        )
     raise ValueError(f"No translation defined for event '{event_type}'")
