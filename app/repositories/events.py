@@ -4,7 +4,7 @@ from app.schemas.events import ActivityEvent
 
 
 async def insert_event(event: ActivityEvent, db: AsyncIOMotorDatabase) -> ActivityEvent:
-    result = await db.events.insert_one(event.model_dump(by_alias=True))
+    result = await db.events.insert_one(event.model_dump(by_alias=True, exclude={"id"}))
     event.id=str(result.inserted_id)
     return event
 
