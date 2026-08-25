@@ -4,9 +4,12 @@ from app.schemas.events import ActivityEvent
 
 
 async def insert_event(event: ActivityEvent, db: AsyncIOMotorDatabase) -> ActivityEvent:
-    await db.events.insert_one(event.model_dump(by_alias=True))
+    result = await db.events.insert_one(event.model_dump(by_alias=True))
+    event.id=str(result.inserted_id)
     return event
 
 async def get_recent_events(db:AsyncIOMotorDatabase, limit: int = 10) -> list[ActivityEvent]:
     docs = await db.events.find().sort("created_at", -1).limit(limit).to_list(limit)
+    for doc in docs:
+        doc["_id"] = str(doc["_id"])
     return [ActivityEvent(**doc) for doc in docs]
