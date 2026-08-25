@@ -9,7 +9,7 @@ class EmptyMetadata(BaseModel):
     pass
 
 class UpdatedMetadata(BaseModel):
-    field: Literal["status", "priority", "type", "due_date", "title", "description"]
+    field: Literal["status", "priority", "type", "due_date", "title", "description", "story_points"]
     from_: str = Field(alias="from")
     to: str
 
@@ -25,10 +25,15 @@ class LabelMetadata(BaseModel):
     label_id: UUID
     label_name: str | None = None
 
+class SprintAssignmentMetadata(BaseModel):
+    sprint_id: UUID
+    sprint_name: str | None = None
+
 UPDATE_ACTIONS = {"ticket.updated"} 
 ASSIGNMENT_ACTIONS = {"ticket.assigned", "ticket.unassigned"}
 EPIC_ACTIONS = {"ticket.epic_linked", "ticket.epic_unlinked"}
 LABEL_ACTIONS = {"label.applied", "label.removed"}
+SPRINT_ASSIGNMENT_ACTIONS ={"ticket.sprint_added", "ticket.sprint_removed"}
 
 
 class ActivityEvent(BaseModel):
@@ -39,7 +44,7 @@ class ActivityEvent(BaseModel):
     entity_id: UUID
     entity_key: str
     project_id: UUID
-    metadata: EmptyMetadata | UpdatedMetadata | AssignmentMetadata | EpicMetadata | LabelMetadata
+    metadata: EmptyMetadata | UpdatedMetadata | AssignmentMetadata | EpicMetadata | LabelMetadata | SprintAssignmentMetadata
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
@@ -49,6 +54,7 @@ class ActivityEvent(BaseModel):
             AssignmentMetadata if self.action in ASSIGNMENT_ACTIONS else
             EpicMetadata if self.action in EPIC_ACTIONS else
             LabelMetadata if self.action in LABEL_ACTIONS else
+            SprintAssignmentMetadata if self.action in SPRINT_ASSIGNMENT_ACTIONS else
             EmptyMetadata
         )
         if not isinstance(self.metadata, expected_type):
