@@ -4,6 +4,8 @@ from app.schemas.events import (
     ActivityEvent,
     AssignmentMetadata,
     EmptyMetadata,
+    EpicMetadata,
+    LabelMetadata,
     UpdatedMetadata,
 )
 
@@ -53,6 +55,61 @@ def translate_event(data: dict) -> ActivityEvent:
             entity_key=data["sprint_name"],
             project_id=UUID(data["project_id"]), 
             metadata=EmptyMetadata(),
+        )
+    
+    if event_type == "ticket.updated":
+        return ActivityEvent(
+            actor=UUID(data["actor_id"]),
+            action="ticket.updated",
+            entity_type="ticket",
+            entity_id=UUID(data["ticket_id"]),
+            entity_key=data["ticket_key"],
+            project_id=UUID(data["project_id"]),
+            metadata=UpdatedMetadata.model_validate({"field": data["field"], "from": data["from_value"], "to": data["to_value"]}),
+        )
+
+    if event_type == "ticket.deleted":
+        return ActivityEvent(
+            actor=UUID(data["actor_id"]),
+            action="ticket.deleted",
+            entity_type="ticket",
+            entity_id=UUID(data["ticket_id"]),
+            entity_key=data["ticket_key"],
+            project_id=UUID(data["project_id"]),
+            metadata=EmptyMetadata(),
+        )
+
+    if event_type == "ticket.unassigned":
+        return ActivityEvent(
+            actor=UUID(data["actor_id"]),
+            action="ticket.unassigned",
+            entity_type="ticket",
+            entity_id=UUID(data["ticket_id"]),
+            entity_key=data["ticket_key"],
+            project_id=UUID(data["project_id"]),
+            metadata=AssignmentMetadata(assignee_id=UUID(data["previous_assignee_id"])),
+        )
+
+    if event_type in ("ticket.epic_linked", "ticket.epic_unlinked"):
+        return ActivityEvent(
+            actor=UUID(data["actor_id"]),
+            action=event_type,
+            entity_type="ticket",
+            entity_id=UUID(data["ticket_id"]),
+            entity_key=data["ticket_key"],
+            project_id=UUID(data["project_id"]),
+            metadata=EpicMetadata(epic_id=UUID(data["epic_id"]), epic_key=data.get("epic_key")),
+        )
+
+    if event_type in ("label.applied", "label.removed"):
+        return ActivityEvent(
+            actor=UUID(data["actor_id"]),
+            action=event_type,
+            entity_type="ticket",
+            entity_id=UUID(data["ticket_id"]),
+            entity_key=data["ticket_key"],
+            project_id=UUID(data["project_id"]),
+            metadata=LabelMetadata(label_id=UUID(data["label_id"]), label_name=data.get("label_name")),
         )
 
     raise ValueError(f"No translation defined for event '{event_type}'")
