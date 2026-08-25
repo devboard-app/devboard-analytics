@@ -46,6 +46,7 @@ async def run() -> None:
                         await redis.xack(STREAM, GROUP, message_id)
                         logger.info(f"Processed {event.action} for {event.entity_key}")
                     except (ValidationError, ValueError, KeyError) as e:
+                        await redis.xack(STREAM, GROUP, message_id)
                         logger.error(f"Failed to process event {data}: {e}")
         except Exception as e :  # noqa: BLE001
             logger.error(f"Consumer error: {e}")
