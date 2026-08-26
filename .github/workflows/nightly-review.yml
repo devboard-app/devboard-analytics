@@ -1,0 +1,20 @@
+name: Nightly Code Review
+on:
+  schedule:
+    - cron: "0 19 * * 1-5"  # 8 PM Romania time (UTC+2), mon-fri
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: dev
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: "You are a senior code reviewer. Analyze all commits pushed to the 'dev' branch in the last 24 hours. For each change, look for: bugs and logic errors, security vulnerabilities, unhandled edge cases, and regressions. Be specific — reference file names and line numbers where possible. Group findings by severity (critical, major, minor). If nothing was merged in the last 24 hours, say so and close the issue. Post the full report as a GitHub issue titled 'Nightly Code Review – [date]'."
+          claude_args: '--allowedTools "mcp__github__create_issue,mcp__github__list_commits"'
