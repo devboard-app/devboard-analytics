@@ -2,6 +2,7 @@ name: Nightly Code Review
 on:
   schedule:
     - cron: "0 19 * * 1-5"  # 8 PM Romania time (UTC+2), mon-fri
+    workflow_dispatch:
 jobs:
   review:
     runs-on: ubuntu-latest
