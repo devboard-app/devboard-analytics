@@ -39,11 +39,11 @@ async def run() -> None:
 
     while True:
         try:
+            _, claimed, _ = await redis.xautoclaim(STREAM, GROUP, CONSUMER, min_idle_time=30000, start_id="0")
             results = await redis.xreadgroup(GROUP, CONSUMER, {STREAM: ">"}, count=10, block=5000)
-            if not results:
-                continue
+            all_messages = claimed + (results[0][1] if results else []) #type:ignore
 
-            for stream, messages in results:
+            for stream, messages in all_messages:
                 for message_id, data in messages: # type: ignore
                     try:
                         event=translate_event(data)
