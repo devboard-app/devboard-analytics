@@ -46,6 +46,7 @@ async def run() -> None:
                 for message_id, data in messages: # type: ignore
                     try:
                         event=translate_event(data)
+                        event.id=message_id
                         await record_event(event, db)
                         await redis.xack(STREAM, GROUP, message_id)
                         logger.info(f"Processed {event.action} for {event.entity_key}")
