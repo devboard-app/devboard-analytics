@@ -43,23 +43,22 @@ async def run() -> None:
             results = await redis.xreadgroup(GROUP, CONSUMER, {STREAM: ">"}, count=10, block=5000)
             all_messages = claimed + (results[0][1] if results else []) #type:ignore
 
-            for stream, messages in all_messages:
-                for message_id, data in messages: # type: ignore
-                    try:
-                        event=translate_event(data)
-                        event.id=message_id
-                        await record_event(event, db)
-                        await redis.xack(STREAM, GROUP, message_id)
-                        logger.info(f"Processed {event.action} for {event.entity_key}")
-                    except (ValidationError, ValueError, KeyError) as e:
-                        await db.failed_events.insert_one({
-                            "message_id": message_id,
-                            "raw_data": data,
-                            "error": str(e),
-                            "failed_at": datetime.now(timezone.utc)
-                        })
-                        await redis.xack(STREAM, GROUP, message_id)
-                        logger.error(f"Failed to process event {data}: {e}")
+            for message_id, data in all_messages: # type: ignore
+                try:
+                    event=translate_event(data)
+                    event.id=message_id
+                    await record_event(event, db)
+                    await redis.xack(STREAM, GROUP, message_id)
+                    logger.info(f"Processed {event.action} for {event.entity_key}")
+                except (ValidationError, ValueError, KeyError) as e:
+                    await db.failed_events.insert_one({
+                        "message_id": message_id,
+                        "raw_data": data,
+                        "error": str(e),
+                        "failed_at": datetime.now(timezone.utc)
+                    })
+                    await redis.xack(STREAM, GROUP, message_id)
+                    logger.error(f"Failed to process event {data}: {e}")
         except Exception as e :  # noqa: BLE001
             logger.error(f"Consumer error: {e}")
             await asyncio.sleep(2)
