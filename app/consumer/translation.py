@@ -57,6 +57,6 @@ def translate_event(data: dict) -> ActivityEvent:
     if event_type in ("ticket.sprint_added", "ticket.sprint_removed"):
         return _build_event(data, event_type, "ticket", data["ticket_id"], data["ticket_key"], SprintAssignmentMetadata(sprint_id=UUID(data["sprint_id"]), sprint_name=data.get("sprint_name")))
 
-    if event_type in ("ticket.commit_linked"):
+    if event_type == "ticket.commit_linked":
         return _build_event(data, "ticket.commit_linked", "ticket", data["ticket_id"], data["ticket_key"], CommitMetadata( commit_sha=data["commit_sha"], commit_url=data["commit_url"], commit_message=data["commit_message"], repo=data["repo"]),)
     raise ValueError(f"No translation defined for event '{event_type}'")
