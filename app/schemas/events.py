@@ -29,11 +29,18 @@ class SprintAssignmentMetadata(BaseModel):
     sprint_id: UUID
     sprint_name: str | None = None
 
+class CommitMetadata(BaseModel):
+    commit_sha: str
+    commit_url: str
+    commit_message: str
+    repo: str
+
 UPDATE_ACTIONS = {"ticket.updated"} 
 ASSIGNMENT_ACTIONS = {"ticket.assigned", "ticket.unassigned"}
 EPIC_ACTIONS = {"ticket.epic_linked", "ticket.epic_unlinked"}
 LABEL_ACTIONS = {"label.applied", "label.removed"}
 SPRINT_ASSIGNMENT_ACTIONS ={"ticket.sprint_added", "ticket.sprint_removed"}
+COMMIT_ACTIONS = {"ticket.commit_linked"}
 
 #to be edited when i get other actions type
 def expected_entity_type_for(action: str) -> str: 
@@ -50,7 +57,7 @@ class ActivityEvent(BaseModel):
     entity_id: UUID
     entity_key: str
     project_id: UUID
-    metadata: EmptyMetadata | UpdatedMetadata | AssignmentMetadata | EpicMetadata | LabelMetadata | SprintAssignmentMetadata
+    metadata: EmptyMetadata | UpdatedMetadata | AssignmentMetadata | EpicMetadata | LabelMetadata | SprintAssignmentMetadata | CommitMetadata
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
@@ -61,6 +68,7 @@ class ActivityEvent(BaseModel):
             EpicMetadata if self.action in EPIC_ACTIONS else
             LabelMetadata if self.action in LABEL_ACTIONS else
             SprintAssignmentMetadata if self.action in SPRINT_ASSIGNMENT_ACTIONS else
+            CommitMetadata if self.action in COMMIT_ACTIONS else
             EmptyMetadata
         )
         if not isinstance(self.metadata, expected_type):
