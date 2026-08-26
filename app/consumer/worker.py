@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime, timezone
 
 from pydantic import ValidationError
 from redis.asyncio import Redis
@@ -51,6 +52,12 @@ async def run() -> None:
                         await redis.xack(STREAM, GROUP, message_id)
                         logger.info(f"Processed {event.action} for {event.entity_key}")
                     except (ValidationError, ValueError, KeyError) as e:
+                        await db.failed_events.insert_one({
+                            "message_id": message_id,
+                            "raw_data": data,
+                            "error": str(e),
+                            "failed_at": datetime.now(timezone.utc)
+                        })
                         await redis.xack(STREAM, GROUP, message_id)
                         logger.error(f"Failed to process event {data}: {e}")
         except Exception as e :  # noqa: BLE001
