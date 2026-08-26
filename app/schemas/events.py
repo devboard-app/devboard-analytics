@@ -35,6 +35,9 @@ EPIC_ACTIONS = {"ticket.epic_linked", "ticket.epic_unlinked"}
 LABEL_ACTIONS = {"label.applied", "label.removed"}
 SPRINT_ASSIGNMENT_ACTIONS ={"ticket.sprint_added", "ticket.sprint_removed"}
 
+#to be edited when i get other actions type
+def expected_entity_type_for(action: str) -> str: 
+    return "sprint" if action in {"sprint.started", "sprint.completed"} else "ticket"
 
 class ActivityEvent(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -62,5 +65,8 @@ class ActivityEvent(BaseModel):
         )
         if not isinstance(self.metadata, expected_type):
             raise ValueError(f"'{self.action}' requires {expected_type.__name__} metadata")  # noqa: TRY004
+        expected_entity_type = expected_entity_type_for(self.action)
+        if self.entity_type != expected_entity_type:
+            raise ValueError(f"'{self.action}' requires entity_type='{expected_entity_type}', got '{self.entity_type}'")
         return self
 
