@@ -39,7 +39,14 @@ async def run() -> None:
 
     while True:
         try:
-            _, claimed, _ = await redis.xautoclaim(STREAM, GROUP, CONSUMER, min_idle_time=30000, start_id="0")
+            claimed = []
+            cursor = "0"
+            while True:
+                cursor, batch, _ = await redis.xautoclaim(STREAM, GROUP, CONSUMER, min_idle_time=30000, start_id=cursor, count=100)
+                claimed.extend(batch)
+                if cursor == "0": 
+                    break
+                
             results = await redis.xreadgroup(GROUP, CONSUMER, {STREAM: ">"}, count=10, block=5000)
             all_messages = claimed + (results[0][1] if results else []) #type:ignore
 

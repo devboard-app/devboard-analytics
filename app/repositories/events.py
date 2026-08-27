@@ -5,8 +5,11 @@ from app.schemas.events import ActivityEvent
 
 
 async def insert_event(event: ActivityEvent, db: AsyncIOMotorDatabase) -> ActivityEvent:
+    doc = event.model_dump(by_alias=True)
+    if doc.get("_id") is None:
+        doc.pop("_id", None)
     try:
-        await db.events.insert_one(event.model_dump(by_alias=True))
+        await db.events.insert_one(doc)
     except DuplicateKeyError:
         pass
     return event
