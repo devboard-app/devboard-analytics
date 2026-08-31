@@ -1,6 +1,6 @@
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from redis.asyncio import Redis
 from pymongo import ASCENDING, DESCENDING
+from redis.asyncio import Redis
 
 from app.config import settings
 

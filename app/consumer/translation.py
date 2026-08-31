@@ -34,13 +34,13 @@ def translate_event(data: dict) -> ActivityEvent:
         return _build_event(data, "ticket.assigned", "ticket", data["ticket_id"], data["ticket_key"], AssignmentMetadata(assignee_id=UUID(data["recipient_id"])))
 
     if event_type == "ticket.status_changed":
-        return _build_event(data, "ticket.updated", "ticket", data["ticket_id"], data["ticket_key"], UpdatedMetadata.model_validate({"field": "status", "from": data["from_status"], "to": data["to_status"]}))
+        return _build_event(data, "ticket.updated", "ticket", data["ticket_id"], data["ticket_key"], UpdatedMetadata.model_validate({"field": "status", "from": data.get("from_value"), "to": data.get("to_value")}))
 
     if event_type in ("sprint.started", "sprint.completed"):
         return _build_event(data, event_type, "sprint", data["sprint_id"], data["sprint_name"], EmptyMetadata())
 
     if event_type == "ticket.updated":
-        return _build_event(data, "ticket.updated", "ticket", data["ticket_id"], data["ticket_key"], UpdatedMetadata.model_validate({"field": data["field"], "from": data["from_value"], "to": data["to_value"]}))
+        return _build_event(data, "ticket.updated", "ticket", data["ticket_id"], data["ticket_key"], UpdatedMetadata.model_validate({"field": data["field"], "from": data.get("from_value"), "to": data.get("to_value")}))
 
     if event_type == "ticket.deleted":
         return _build_event(data, "ticket.deleted", "ticket", data["ticket_id"], data["ticket_key"], EmptyMetadata())
