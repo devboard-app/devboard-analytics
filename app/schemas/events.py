@@ -10,8 +10,8 @@ class EmptyMetadata(BaseModel):
 
 class UpdatedMetadata(BaseModel):
     field: Literal["status", "priority", "type", "due_date", "title", "description", "story_points"]
-    from_: str = Field(alias="from")
-    to: str
+    from_: str | None = Field(default=None, alias="from")
+    to: str | None = None
 
 class AssignmentMetadata(BaseModel):
     assignee_id: UUID

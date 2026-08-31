@@ -6,9 +6,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.database import (
     close_mongo_connection,
-    close_redis_connection,
     connect_to_mongo,
-    connect_to_redis,
+    ensure_indexes,
     get_database,
 )
 from app.routers.events import router as events_router
@@ -17,11 +16,9 @@ from app.routers.events import router as events_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_to_mongo() 
-    await connect_to_redis()
+    await ensure_indexes()
     yield
     await close_mongo_connection()
-    await close_redis_connection()   
-
 
 app = FastAPI(
     title="Devboard Analytics Service",
