@@ -7,7 +7,7 @@ from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
 from app.config import settings
-from app.database import connect_to_mongo, get_database
+from app.database import connect_to_mongo, ensure_indexes, get_database
 from app.services.ingestion import record_event
 
 from .translation import translate_event
@@ -33,6 +33,7 @@ async def ensure_group(redis: Redis) -> None:
 async def run() -> None:
     await connect_to_mongo()
     db = get_database()
+    await ensure_indexes()
     redis = Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_timeout=10)
     await ensure_group(redis)
     logger.info("Consumer started, waiting for events...")
@@ -50,7 +51,7 @@ async def run() -> None:
                 logger.warning("Reclaim scan hit the iteration cap, continuing anyway")
             if claimed:
                 logger.info(f"Reclaimed {len(claimed)} pending messages")
-                
+
             results = await redis.xreadgroup(GROUP, CONSUMER, {STREAM: ">"}, count=10, block=5000)
             all_messages = claimed + (results[0][1] if results else []) #type:ignore
 

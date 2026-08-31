@@ -1,5 +1,6 @@
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from redis.asyncio import Redis
+from pymongo import ASCENDING, DESCENDING
 
 from app.config import settings
 
@@ -27,3 +28,12 @@ def get_database() -> AsyncIOMotorDatabase:
     if client is None:
         raise RuntimeError("Mongo client is not initiated. Did the app startup run?")
     return client.get_default_database()
+
+async def ensure_indexes() -> None:
+    db = get_database()
+    await db.events.create_index([("created_at", DESCENDING)])
+    await db.events.create_index([("project_id", ASCENDING), ("created_at", DESCENDING)])
+    await db.events.create_index([("entity_type", ASCENDING), ("entity_id", ASCENDING)])
+    await db.events.create_index([("actor", ASCENDING), ("created_at", DESCENDING)])
+
+
