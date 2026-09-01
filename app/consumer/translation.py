@@ -1,6 +1,6 @@
+from datetime import datetime, timezone
 from typing import Literal
 from uuid import UUID
-from datetime import datetime, timezone
 
 from app.schemas.events import (
     ActivityEvent,
