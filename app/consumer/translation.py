@@ -1,5 +1,6 @@
 from typing import Literal
 from uuid import UUID
+from datetime import datetime, timezone
 
 from app.schemas.events import (
     ActivityEvent,
@@ -65,3 +66,9 @@ def translate_event(data: dict) -> ActivityEvent:
         return _build_event(data, event_type, "comment", data["comment_id"], data["ticket_key"], CommentMetadata(ticket_id=UUID(data["ticket_id"])))
 
     raise ValueError(f"No translation defined for event '{event_type}'")
+
+def created_at_from_message_id(message_id: str) -> datetime | None:
+    try:
+        return datetime.fromtimestamp(int(str(message_id).split("-")[0]) / 1000, timezone.utc)
+    except ValueError:
+        return None
