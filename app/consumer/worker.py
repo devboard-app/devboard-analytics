@@ -11,7 +11,7 @@ from app.database import connect_to_mongo, ensure_indexes, get_database
 from app.schemas.events import IGNORED_ACTIONS
 from app.services.ingestion import record_event
 
-from .translation import translate_event
+from .translation import created_at_from_message_id, translate_event
 
 STREAM = "devboard:events"
 GROUP = "devboard-analytics-group"
@@ -64,6 +64,7 @@ async def run() -> None:
                 try:
                     event=translate_event(data)
                     event.id=message_id
+                    event.created_at=created_at_from_message_id(message_id) or datetime.now(timezone.utc)
                     await record_event(event, db)
                     await redis.xack(STREAM, GROUP, message_id)
                     logger.info(f"Processed {event.action} for {event.entity_key}")
