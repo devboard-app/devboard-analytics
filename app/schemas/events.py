@@ -47,6 +47,8 @@ SPRINT_ACTIONS = {"sprint.started", "sprint.completed"}
 COMMIT_ACTIONS = {"ticket.commit_linked"}
 COMMENT_ACTIONS = {"comment.created", "comment.updated", "comment.deleted"}
 
+IGNORED_ACTIONS = {"comment.mentioned"}
+
 def expected_entity_type_for(action: str) -> str:
     if action in SPRINT_ACTIONS:
         return "sprint"
