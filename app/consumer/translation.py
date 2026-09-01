@@ -4,6 +4,7 @@ from uuid import UUID
 from app.schemas.events import (
     ActivityEvent,
     AssignmentMetadata,
+    CommentMetadata,
     CommitMetadata,
     EmptyMetadata,
     EpicMetadata,
@@ -59,4 +60,8 @@ def translate_event(data: dict) -> ActivityEvent:
 
     if event_type == "ticket.commit_linked":
         return _build_event(data, "ticket.commit_linked", "ticket", data["ticket_id"], data["ticket_key"], CommitMetadata( commit_sha=data["commit_sha"], commit_url=data["commit_url"], commit_message=data["commit_message"], repo=data["repo"]),)
+
+    if event_type in ("comment.created", "comment.updated", "comment.deleted"):
+        return _build_event(data, event_type, "comment", data["comment_id"], data["ticket_key"], CommentMetadata(ticket_id=UUID(data["ticket_id"])))
+
     raise ValueError(f"No translation defined for event '{event_type}'")
