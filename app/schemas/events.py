@@ -35,17 +35,24 @@ class CommitMetadata(BaseModel):
     commit_message: str
     repo: str
 
+class CommentMetadata(BaseModel):
+    ticket_id: UUID
+
 UPDATE_ACTIONS = {"ticket.updated"} 
 ASSIGNMENT_ACTIONS = {"ticket.assigned", "ticket.unassigned"}
 EPIC_ACTIONS = {"ticket.epic_linked", "ticket.epic_unlinked"}
 LABEL_ACTIONS = {"label.applied", "label.removed"}
 SPRINT_ASSIGNMENT_ACTIONS ={"ticket.sprint_added", "ticket.sprint_removed"}
+SPRINT_ACTIONS = {"sprint.started", "sprint.completed"}
 COMMIT_ACTIONS = {"ticket.commit_linked"}
+COMMENT_ACTIONS = {"comment.created", "comment.updated", "comment.deleted"}
 
-#to be edited when i get other actions type
-def expected_entity_type_for(action: str) -> str: 
-    return "sprint" if action in {"sprint.started", "sprint.completed"} else "ticket"
-
+def expected_entity_type_for(action: str) -> str:
+    if action in SPRINT_ACTIONS:
+        return "sprint"
+    if action in COMMENT_ACTIONS:
+        return "comment"
+    return "ticket"
 class ActivityEvent(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -57,7 +64,7 @@ class ActivityEvent(BaseModel):
     entity_id: UUID
     entity_key: str
     project_id: UUID
-    metadata: EmptyMetadata | UpdatedMetadata | AssignmentMetadata | EpicMetadata | LabelMetadata | SprintAssignmentMetadata | CommitMetadata
+    metadata: EmptyMetadata | UpdatedMetadata | AssignmentMetadata | EpicMetadata | LabelMetadata | SprintAssignmentMetadata | CommitMetadata | CommentMetadata
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
@@ -69,6 +76,7 @@ class ActivityEvent(BaseModel):
             LabelMetadata if self.action in LABEL_ACTIONS else
             SprintAssignmentMetadata if self.action in SPRINT_ASSIGNMENT_ACTIONS else
             CommitMetadata if self.action in COMMIT_ACTIONS else
+            CommentMetadata if self.action in COMMENT_ACTIONS else
             EmptyMetadata
         )
         if not isinstance(self.metadata, expected_type):
