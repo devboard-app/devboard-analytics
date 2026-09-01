@@ -8,6 +8,7 @@ from redis.exceptions import ResponseError
 
 from app.config import settings
 from app.database import connect_to_mongo, ensure_indexes, get_database
+from app.schemas.events import IGNORED_ACTIONS
 from app.services.ingestion import record_event
 
 from .translation import translate_event
@@ -56,6 +57,10 @@ async def run() -> None:
             all_messages = claimed + (results[0][1] if results else []) #type:ignore
 
             for message_id, data in all_messages: # type: ignore
+                if data.get("event") in IGNORED_ACTIONS:
+                    await redis.xack(STREAM, GROUP, message_id)
+                    logger.info(f"Ignored event {data.get('event')} for message {message_id}")
+                    continue
                 try:
                     event=translate_event(data)
                     event.id=message_id
