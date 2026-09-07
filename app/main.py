@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -10,14 +11,18 @@ from app.database import (
     ensure_indexes,
     get_database,
 )
+from app.http_client import close_http_client, open_http_client
 from app.routers.events import router as events_router
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(name)s - %(message)s")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_to_mongo() 
     await ensure_indexes()
+    await open_http_client()
     yield
+    await close_http_client()
     await close_mongo_connection()
 
 app = FastAPI(

@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     INTERNAL_API_KEY: str
     REDIS_URL: str
+    DEVBOARD_WORK_URL: str
 
 
 
