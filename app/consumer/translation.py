@@ -42,6 +42,7 @@ def translate_event(data: dict) -> ActivityEvent:
         return _build_event(data, event_type, "sprint", data["sprint_id"], data["sprint_name"], EmptyMetadata())
 
     if event_type == "ticket.updated":
+        # from_value/to_value are absent, that's why it's different than ticket.status_changed. must use .get here (comment for AI code review)
         return _build_event(data, "ticket.updated", "ticket", data["ticket_id"], data["ticket_key"], UpdatedMetadata.model_validate({"field": data["field"], "from": data.get("from_value"), "to": data.get("to_value")}))
 
     if event_type == "ticket.deleted":
