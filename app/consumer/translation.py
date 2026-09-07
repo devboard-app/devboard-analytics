@@ -7,10 +7,12 @@ from app.schemas.events import (
     AssignmentMetadata,
     CommentMetadata,
     CommitMetadata,
+    CreatedMetadata,
     EmptyMetadata,
     EpicMetadata,
     LabelMetadata,
     SprintAssignmentMetadata,
+    SprintMetadata,
     UpdatedMetadata,
 )
 
@@ -30,7 +32,7 @@ def translate_event(data: dict) -> ActivityEvent:
     event_type = data["event"]
 
     if event_type == "ticket.created":
-        return _build_event(data, "ticket.created", "ticket", data["ticket_id"], data["ticket_key"], EmptyMetadata())
+        return _build_event(data, "ticket.created", "ticket", data["ticket_id"], data["ticket_key"], CreatedMetadata(story_points=data.get("story_points")))
 
     if event_type == "ticket.assigned":
         return _build_event(data, "ticket.assigned", "ticket", data["ticket_id"], data["ticket_key"], AssignmentMetadata(assignee_id=UUID(data["recipient_id"])))
@@ -39,7 +41,7 @@ def translate_event(data: dict) -> ActivityEvent:
         return _build_event(data, "ticket.updated", "ticket", data["ticket_id"], data["ticket_key"], UpdatedMetadata.model_validate({"field": "status", "from": data["from_status"], "to": data["to_status"]}))
 
     if event_type in ("sprint.started", "sprint.completed"):
-        return _build_event(data, event_type, "sprint", data["sprint_id"], data["sprint_name"], EmptyMetadata())
+        return _build_event(data, event_type, "sprint", data["sprint_id"], data["sprint_name"], SprintMetadata(start_date=data.get("start_date"), end_date=data.get("end_date")))
 
     if event_type == "ticket.updated":
         # from_value/to_value are absent, that's why it's different than ticket.status_changed. must use .get here (comment for AI code review)
