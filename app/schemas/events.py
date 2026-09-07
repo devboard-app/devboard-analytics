@@ -8,6 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class EmptyMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+class CreatedMetadata(BaseModel):
+    story_points: str | None
+
 class UpdatedMetadata(BaseModel):
     field: Literal["status", "priority", "type", "due_date", "title", "description", "story_points"]
     from_: str | None = Field(default=None, alias="from")
@@ -25,6 +28,9 @@ class LabelMetadata(BaseModel):
     label_id: UUID
     label_name: str | None = None
 
+class SprintMetadata(BaseModel):
+    start_date: str | None
+    end_date: str | None
 class SprintAssignmentMetadata(BaseModel):
     sprint_id: UUID
     sprint_name: str | None = None
@@ -38,6 +44,7 @@ class CommitMetadata(BaseModel):
 class CommentMetadata(BaseModel):
     ticket_id: UUID
 
+CREATED_ACTIONS = {"ticket.created"}
 UPDATE_ACTIONS = {"ticket.updated"} 
 ASSIGNMENT_ACTIONS = {"ticket.assigned", "ticket.unassigned"}
 EPIC_ACTIONS = {"ticket.epic_linked", "ticket.epic_unlinked"}
@@ -66,17 +73,19 @@ class ActivityEvent(BaseModel):
     entity_id: UUID
     entity_key: str
     project_id: UUID
-    metadata: EmptyMetadata | UpdatedMetadata | AssignmentMetadata | EpicMetadata | LabelMetadata | SprintAssignmentMetadata | CommitMetadata | CommentMetadata
+    metadata: EmptyMetadata | UpdatedMetadata | AssignmentMetadata | EpicMetadata | LabelMetadata | SprintAssignmentMetadata | CommitMetadata | CommentMetadata | SprintMetadata | CreatedMetadata
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
     def check_metadata_matches_action(self):
         expected_type = (
+            CreatedMetadata if self.action in CREATED_ACTIONS else
             UpdatedMetadata if self.action in UPDATE_ACTIONS else
             AssignmentMetadata if self.action in ASSIGNMENT_ACTIONS else
             EpicMetadata if self.action in EPIC_ACTIONS else
             LabelMetadata if self.action in LABEL_ACTIONS else
             SprintAssignmentMetadata if self.action in SPRINT_ASSIGNMENT_ACTIONS else
+            SprintMetadata if self.action in SPRINT_ACTIONS else
             CommitMetadata if self.action in COMMIT_ACTIONS else
             CommentMetadata if self.action in COMMENT_ACTIONS else
             EmptyMetadata
