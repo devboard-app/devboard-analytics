@@ -17,6 +17,11 @@ class ActorActivity(BaseModel):
     total: int
     by_action: dict[str, int]
 
+class ActivitySummary(BaseModel):
+    project_id: UUID
+    total_events: int
+    actors: list[ActorActivity]
+    
 class SprintVelocity(BaseModel):
     sprint_id: UUID
     sprint_name: str
