@@ -3,6 +3,7 @@ from uuid import UUID
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from app.exceptions import SprintNotFoundException, SprintWindowMissingException
 from app.repositories.reports import (
     count_by_actor,
     get_activity_page,
@@ -135,15 +136,12 @@ async def get_velocity(project_id: UUID, db: AsyncIOMotorDatabase) -> VelocityRe
     average = sum(r.completed_points for r in rows) / len(rows) if rows else 0.0
     return VelocityReport(project_id=project_id, sprints=rows, average_points=average)
 
-async def get_burndown(sprint_id: UUID, db: AsyncIOMotorDatabase) -> BurndownReport:
+async def get_burndown(sprint: ActivityEvent, db: AsyncIOMotorDatabase) -> BurndownReport:
     """Remaining work per day of a sprint, nex to the ideal line
         remaining_points(real line) + ideal_points (guideline) vs time"""
-    sprint = await get_sprint(sprint_id, db)
-    if sprint is None:
-        raise ValueError("Sprint not found.")
     md = sprint.metadata
     if not isinstance(md, SprintMetadata) or not md.start_date or not md.end_date:
-        raise ValueError("Sprint has no start or end date.")
+        raise SprintWindowMissingException
 
     start = date.fromisoformat(md.start_date)
     end = date.fromisoformat(md.end_date)
@@ -151,7 +149,7 @@ async def get_burndown(sprint_id: UUID, db: AsyncIOMotorDatabase) -> BurndownRep
     events = await get_ticket_history(sprint.project_id, db)
 
     at_start = build_ticket_states(events, until=sprint.created_at)
-    committed = sum(t["points"] or 0 for t in at_start.values() if t["sprint"] == sprint_id)
+    committed = sum(t["points"] or 0 for t in at_start.values() if t["sprint"] == sprint.entity_id)
 
     all_days: list[date] =[]
     day = start
@@ -177,7 +175,7 @@ async def get_burndown(sprint_id: UUID, db: AsyncIOMotorDatabase) -> BurndownRep
         cutoff = datetime.combine(current, time.max) # today 23:59:59.999
         states = build_ticket_states(events, until=cutoff)
 
-        in_sprint = [t for t in states.values() if t["sprint"] == sprint_id]
+        in_sprint = [t for t in states.values() if t["sprint"] == sprint.entity_id]
         open_tickets = [t for t in in_sprint if t["status"] != "done"]
 
         days.append(BurndownDay(
@@ -189,7 +187,7 @@ async def get_burndown(sprint_id: UUID, db: AsyncIOMotorDatabase) -> BurndownRep
         unpointed = sum(1 for t in in_sprint if t["points"] is None)
 
     return BurndownReport(
-        sprint_id=sprint_id,
+        sprint_id=sprint.entity_id,
         sprint_name=sprint.entity_key,
         start_date=start,
         end_date=end,

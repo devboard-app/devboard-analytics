@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.database import get_database
@@ -11,6 +11,8 @@ from app.dependencies import (
     require_project_lead,
     require_project_member,
 )
+from app.exceptions import ForbiddenException, SprintNotFoundException
+from app.repositories.reports import get_sprint
 from app.schemas.reports import (
     ActivitySummary,
     BurndownReport,
@@ -20,7 +22,6 @@ from app.schemas.reports import (
 from app.services.reports import (
     get_activity_feed,
     get_burndown,
-    get_sprint,
     get_velocity,
     get_who_did_what,
 )
@@ -55,9 +56,9 @@ async def velocity(project_id: UUID, db: db, _lead: Annotated[str, Depends(requi
 async def burndown(sprint_id: UUID, db: db, user_id: CurrentUser) -> BurndownReport:
     sprint = await get_sprint(sprint_id, db)
     if sprint is None:
-        raise HTTPException(status_code=404, detail="Sprint not found.")
+        raise SprintNotFoundException
 
     if await get_project_role(user_id, sprint.project_id) != "lead":
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise ForbiddenException
 
-    return await get_burndown(sprint_id, db)
+    return await get_burndown(sprint, db)
