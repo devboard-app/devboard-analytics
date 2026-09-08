@@ -1,4 +1,5 @@
 from datetime import date, datetime, time, timedelta, timezone
+from statistics import median
 from uuid import UUID
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -22,11 +23,15 @@ from app.schemas.reports import (
     ActorActivity,
     BurndownDay,
     BurndownReport,
+    CycleTimeReport,
     PaginatedActivity,
     SprintVelocity,
+    TicketCycleTime,
     VelocityReport,
 )
 
+DAY_SECONDS = 86400
+WORKING = {"in_progress", "in_review"}
 
 async def get_activity_feed(project_id: UUID, limit: int, offset: int, db: AsyncIOMotorDatabase, actor: UUID | None = None) -> PaginatedActivity:
     result, total = await get_activity_page(project_id, limit, offset, db, actor)
@@ -58,7 +63,8 @@ def build_ticket_states(events: list[ActivityEvent], until: datetime | None = No
         md = event.metadata
 
         if event.action == "ticket.created" and isinstance(md, CreatedMetadata):
-            states[ticket_id] = {"key": event.entity_key, "points": int(md.story_points) if md.story_points else None, "status": "todo", "sprint": None}
+            states[ticket_id] = {"key": event.entity_key, "points": int(md.story_points) if md.story_points else None, "status": "todo", "sprint": None,
+                                 "created_at": event.created_at, "done_at": None, "reopened": 0, "active_seconds": 0.0, "entered_working": None}
 
         elif event.action == "ticket.deleted":
             states.pop(ticket_id, None)
@@ -68,7 +74,20 @@ def build_ticket_states(events: list[ActivityEvent], until: datetime | None = No
 
         elif event.action == "ticket.updated" and isinstance(md, UpdatedMetadata):
             if md.field == "status":
-                states[ticket_id]["status"] = md.to
+                # tracking active ticket time
+                state = states[ticket_id]
+                was, now = state["status"], md.to
+                state["status"] = now
+
+                if was in WORKING and now not in WORKING:
+                    state["active_seconds"] += (event.created_at - state["entered_working"]).total_seconds()
+                if now in WORKING and was not in WORKING:
+                    state["entered_working"] = event.created_at
+                if now == "done":
+                    state["done_at"] = event.created_at
+                if was == "done":
+                    state["reopened"] += 1
+
             elif md.field == "story_points":
                 states[ticket_id]["points"] = int(md.to) if md.to else None
 
@@ -193,4 +212,32 @@ async def get_burndown(sprint: ActivityEvent, db: AsyncIOMotorDatabase) -> Burnd
         committed_points=committed,
         unpointed_tickets=unpointed,
         days=days
+    )
+
+async def get_cycle_time(project_id: UUID, db: AsyncIOMotorDatabase) -> CycleTimeReport:
+    """How long a ticket take: waiting (lead time) vs actually worked on (cycle time)"""
+    states = build_ticket_states(await get_ticket_history(project_id, db))
+
+    rows: list[TicketCycleTime] = []
+    for t in states.values():
+        if t["done_at"] is None:
+            continue # never finished, so no need to measure 
+
+        rows.append(TicketCycleTime(
+            ticket_key=t["key"],
+            lead_time_days=round((t["done_at"] - t["created_at"]).total_seconds() / DAY_SECONDS, 2),
+            cycle_time_days=round((t["active_seconds"]) / DAY_SECONDS, 2) if t["active_seconds"] else None,
+            reopened=t["reopened"],
+        ))
+    rows.sort(key=lambda r: r.lead_time_days, reverse=True)
+
+    leads = [r.lead_time_days for r in rows]
+    cycles = [r.cycle_time_days for r in rows if r.cycle_time_days is not None]
+
+    return CycleTimeReport(
+        project_id=project_id,
+        completed_tickets=len(rows),
+        median_lead_time_days=round(median(leads), 2) if leads else 0.0,
+        median_cycle_time_days=round(median(cycles), 2) if cycles else 0.0,
+        tickets=rows,
     )

@@ -41,13 +41,13 @@ async def count_by_actor(project_id: UUID, db: AsyncIOMotorDatabase, actor: UUID
 async def get_ticket_history(project_id: UUID, db: AsyncIOMotorDatabase) -> list[ActivityEvent]:
     """State-changing ticket events, OLDEST first"""
     query = {"project_id": project_id, "action": {"$in": STATE_ACTIONS}}
-    docs = await db.events.find(query).sort("created_at", 1).to_list(None)
+    docs = await db.events.find(query).sort([("created_at", 1), ("_id", 1)]).to_list(None)
     return _to_events(docs)
 
 async def get_project_sprints(project_id: UUID, db: AsyncIOMotorDatabase) -> list[ActivityEvent]:
     """Every sprint in a project. sprint.started is the only event carrying the data"""
     query = {"project_id": project_id, "action": "sprint.started"}
-    docs = await db.events.find(query).sort("created_at", 1).to_list(None)
+    docs = await db.events.find(query).sort([("created_at", 1), ("_id", 1)]).to_list(None)
     return _to_events(docs)
 
 async def get_sprint(sprint_id: UUID, db: AsyncIOMotorDatabase) -> ActivityEvent | None:
