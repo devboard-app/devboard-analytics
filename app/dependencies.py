@@ -3,21 +3,26 @@ from typing import Annotated
 from uuid import UUID
 
 import httpx
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header
 from jose import JWTError, jwt
 
 from app.config import settings
+from app.exceptions import (
+    ForbiddenException,
+    ServiceUnavailableException,
+    UnauthorizedException,
+)
 from app.http_client import get_http_client
 
 logger = logging.getLogger(__name__)
 
 async def verify_internal_key(x_service_key: Annotated[str, Header(...)]):
     if x_service_key != settings.INTERNAL_API_KEY:
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise ForbiddenException
 
 async def get_current_user_id(authorization: Annotated[str | None, Header(...)] = None) -> UUID:
     if authorization is None or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
+        raise UnauthorizedException
     try:
         payload = jwt.decode(
             authorization.split(" ", 1)[1],
@@ -26,7 +31,7 @@ async def get_current_user_id(authorization: Annotated[str | None, Header(...)] 
         )
         return UUID(payload["sub"])
     except (JWTError, KeyError, ValueError):
-        raise HTTPException(status_code=401, detail="Unauthorized") 
+        raise UnauthorizedException 
 
 async def get_project_role(user_id: UUID, project_id: UUID) -> str:
     try:
@@ -36,11 +41,17 @@ async def get_project_role(user_id: UUID, project_id: UUID) -> str:
         )
     except httpx.TransportError:
         logger.warning("devboard-work service is unavailable", exc_info=True)
-        raise HTTPException(status_code=503, detail="Authorization service unavailable")
+        raise ServiceUnavailableException("Authorization service")
     if response.status_code != 200:
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise ForbiddenException
     return response.json()["role"]
 
 
 async def require_project_member(project_id: UUID, user_id: Annotated[UUID, Depends(get_current_user_id)]) -> str:
     return await get_project_role(user_id, project_id)
+
+async def require_project_lead(project_id: UUID, user_id: Annotated[UUID, Depends(get_current_user_id)]) -> str:
+    role = await get_project_role(user_id, project_id)
+    if role != "lead":
+        raise ForbiddenException
+    return role

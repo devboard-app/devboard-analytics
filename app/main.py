@@ -11,8 +11,10 @@ from app.database import (
     ensure_indexes,
     get_database,
 )
+from app.exception_handlers import register_exception_handlers
 from app.http_client import close_http_client, open_http_client
 from app.routers.events import router as events_router
+from app.routers.reports import router as reports_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(name)s - %(message)s")
 
@@ -29,7 +31,9 @@ app = FastAPI(
     title="Devboard Analytics Service",
     lifespan = lifespan
 )
+register_exception_handlers(app)
 app.include_router(events_router)
+app.include_router(reports_router)
 
 @app.get("/health")
 async def health():
