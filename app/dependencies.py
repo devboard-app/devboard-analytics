@@ -44,3 +44,9 @@ async def get_project_role(user_id: UUID, project_id: UUID) -> str:
 
 async def require_project_member(project_id: UUID, user_id: Annotated[UUID, Depends(get_current_user_id)]) -> str:
     return await get_project_role(user_id, project_id)
+
+async def require_project_lead(project_id: UUID, user_id: Annotated[UUID, Depends(get_current_user_id)]) -> str:
+    role = await get_project_role(user_id, project_id)
+    if role != "lead":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return role
