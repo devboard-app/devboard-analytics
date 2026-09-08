@@ -3,12 +3,11 @@ from uuid import UUID
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.exceptions import SprintNotFoundException, SprintWindowMissingException
+from app.exceptions import SprintWindowMissingException
 from app.repositories.reports import (
     count_by_actor,
     get_activity_page,
     get_project_sprints,
-    get_sprint,
     get_ticket_history,
 )
 from app.schemas.events import (

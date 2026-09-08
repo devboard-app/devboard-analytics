@@ -28,12 +28,12 @@ from app.services.reports import (
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
-db = Annotated[AsyncIOMotorDatabase, Depends(get_database)]
+Db = Annotated[AsyncIOMotorDatabase, Depends(get_database)]
 CurrentUser = Annotated[UUID, Depends(get_current_user_id)]
 
 @router.get("/projects/{project_id}/activity", response_model=PaginatedActivity)
 async def activity(
-    project_id: UUID, db: db, _member: Annotated[str, Depends(require_project_member)],
+    project_id: UUID, db: Db, _member: Annotated[str, Depends(require_project_member)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
     actor: UUID | None = None
@@ -42,18 +42,18 @@ async def activity(
 
 
 @router.get("/projects/{project_id}/activity/summary", response_model=ActivitySummary)
-async def who_did_what(project_id: UUID, db: db, user_id: CurrentUser, role: Annotated[str, Depends(require_project_member)]) -> ActivitySummary:
+async def who_did_what(project_id: UUID, db: Db, user_id: CurrentUser, role: Annotated[str, Depends(require_project_member)]) -> ActivitySummary:
     # lead sees everyone, contributor sees only themselves.
     return await get_who_did_what(project_id, db, actor=None if role == "lead" else user_id)
 
 
 @router.get("/projects/{project_id}/velocity", response_model=VelocityReport)
-async def velocity(project_id: UUID, db: db, _lead: Annotated[str, Depends(require_project_lead)]) -> VelocityReport:
+async def velocity(project_id: UUID, db: Db, _lead: Annotated[str, Depends(require_project_lead)]) -> VelocityReport:
     return await get_velocity(project_id, db)
 
 
 @router.get("/sprints/{sprint_id}/burndown", response_model=BurndownReport)
-async def burndown(sprint_id: UUID, db: db, user_id: CurrentUser) -> BurndownReport:
+async def burndown(sprint_id: UUID, db: Db, user_id: CurrentUser) -> BurndownReport:
     sprint = await get_sprint(sprint_id, db)
     if sprint is None:
         raise SprintNotFoundException
