@@ -1,3 +1,8 @@
+from datetime import date, datetime, time, timedelta, timezone
+from uuid import UUID
+
+from motor.motor_asyncio import AsyncIOMotorDatabase
+
 from app.repositories.reports import (
     count_by_actor,
     get_activity_page,
@@ -5,11 +10,22 @@ from app.repositories.reports import (
     get_sprint,
     get_ticket_history,
 )
-from motor.motor_asyncio import AsyncIOMotorDatabase
-from datetime import date, datetime
-from uuid import UUID
-from app.schemas.reports import PaginatedActivity, ActivitySummary, ActorActivity, ActivityEvent, VelocityReport, SprintVelocity
-from app.schemas.events import CreatedMetadata, UpdatedMetadata, SprintAssignmentMetadata, SprintMetadata
+from app.schemas.events import (
+    CreatedMetadata,
+    SprintAssignmentMetadata,
+    SprintMetadata,
+    UpdatedMetadata,
+)
+from app.schemas.reports import (
+    ActivityEvent,
+    ActivitySummary,
+    ActorActivity,
+    BurndownDay,
+    BurndownReport,
+    PaginatedActivity,
+    SprintVelocity,
+    VelocityReport,
+)
 
 
 async def get_activity_feed(project_id: UUID, limit: int, offset: int, db: AsyncIOMotorDatabase, actor: UUID | None = None) -> PaginatedActivity:
@@ -64,6 +80,33 @@ def build_ticket_states(events: list[ActivityEvent], until: datetime | None = No
     return states
 
 async def get_velocity(project_id: UUID, db: AsyncIOMotorDatabase) -> VelocityReport:
+    """How many points each sprint took on, and how many it delivered.
+    Example:
+        {
+          "project_id": "5a69519f-bcb0-5329-b152-3f767ee3c484",
+          "average_points": 20.0,
+          "sprints": [
+            {
+              "sprint_id": "bd590c73-bdb4-528c-9cbc-d0995b0137c1",
+              "sprint_name": "Sprint 1",
+              "start_date": "2026-08-13",
+              "end_date": "2026-08-27",
+              "committed_points": 40,
+              "completed_points": 27,
+              "completed_tickets": 7
+            },
+            {
+              "sprint_id": "4260b207-f709-56f4-9db3-3769960bbdc8",
+              "sprint_name": "Sprint 2",
+              "start_date": "2026-09-02",
+              "end_date": "2026-09-12",
+              "committed_points": 20,
+              "completed_points": 13,
+              "completed_tickets": 4
+            }
+          ]
+        }
+    """
     sprints = await get_project_sprints(project_id, db)
     events = await get_ticket_history(project_id, db)
     final = build_ticket_states(events)
@@ -91,3 +134,66 @@ async def get_velocity(project_id: UUID, db: AsyncIOMotorDatabase) -> VelocityRe
 
     average = sum(r.completed_points for r in rows) / len(rows) if rows else 0.0
     return VelocityReport(project_id=project_id, sprints=rows, average_points=average)
+
+async def get_burndown(sprint_id: UUID, db: AsyncIOMotorDatabase) -> BurndownReport:
+    """Remaining work per day of a sprint, nex to the ideal line
+        remaining_points(real line) + ideal_points (guideline) vs time"""
+    sprint = await get_sprint(sprint_id, db)
+    if sprint is None:
+        raise ValueError("Sprint not found.")
+    md = sprint.metadata
+    if not isinstance(md, SprintMetadata) or not md.start_date or not md.end_date:
+        raise ValueError("Sprint has no start or end date.")
+
+    start = date.fromisoformat(md.start_date)
+    end = date.fromisoformat(md.end_date)
+
+    events = await get_ticket_history(sprint.project_id, db)
+
+    at_start = build_ticket_states(events, until=sprint.created_at)
+    committed = sum(t["points"] or 0 for t in at_start.values() if t["sprint"] == sprint_id)
+
+    all_days: list[date] =[]
+    day = start
+    while day <= end:
+        all_days.append(day)
+        day += timedelta(days=1)
+
+    work_days = [d for d in all_days if d.weekday() < 5]
+    steps = max(len(work_days) - 1, 1)
+
+    def ideal_for(current: date) -> float:
+        elapsed = max(sum(1 for w in work_days if w <= current) - 1, 0)
+        return round(committed * (1 - elapsed / steps), 2)
+
+    today = datetime.now(timezone.utc).date()
+    days: list[BurndownDay] = []
+    unpointed = 0
+
+    for current in all_days:
+        if current > today:
+            break
+
+        cutoff = datetime.combine(current, time.max) # today 23:59:59.999
+        states = build_ticket_states(events, until=cutoff)
+
+        in_sprint = [t for t in states.values() if t["sprint"] == sprint_id]
+        open_tickets = [t for t in in_sprint if t["status"] != "done"]
+
+        days.append(BurndownDay(
+            day=current,
+            remaining_points=sum(t["points"] or 0 for t in open_tickets),
+            remaining_tickets=len(open_tickets),
+            ideal_points=ideal_for(current),
+        ))
+        unpointed = sum(1 for t in in_sprint if t["points"] is None)
+
+    return BurndownReport(
+        sprint_id=sprint_id,
+        sprint_name=sprint.entity_key,
+        start_date=start,
+        end_date=end,
+        committed_points=committed,
+        unpointed_tickets=unpointed,
+        days=days
+    )
