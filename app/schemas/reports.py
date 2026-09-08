@@ -50,3 +50,16 @@ class BurndownReport(BaseModel):
     committed_points: int
     unpointed_tickets: int
     days: list[BurndownDay]
+
+class TicketCycleTime(BaseModel):
+    ticket_key: str
+    lead_time_days: float
+    cycle_time_days: float | None
+    reopened: int
+
+class CycleTimeReport(BaseModel):
+    project_id: UUID
+    completed_tickets: int
+    median_lead_time_days: float
+    median_cycle_time_days: float
+    tickets: list[TicketCycleTime]

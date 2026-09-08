@@ -16,12 +16,14 @@ from app.repositories.reports import get_sprint
 from app.schemas.reports import (
     ActivitySummary,
     BurndownReport,
+    CycleTimeReport,
     PaginatedActivity,
     VelocityReport,
 )
 from app.services.reports import (
     get_activity_feed,
     get_burndown,
+    get_cycle_time,
     get_velocity,
     get_who_did_what,
 )
@@ -51,6 +53,9 @@ async def who_did_what(project_id: UUID, db: Db, user_id: CurrentUser, role: Ann
 async def velocity(project_id: UUID, db: Db, _lead: Annotated[str, Depends(require_project_lead)]) -> VelocityReport:
     return await get_velocity(project_id, db)
 
+@router.get("/projects/{project_id}/cycle-time", response_model=CycleTimeReport)
+async def cycle_time(project_id: UUID, db: Db, _lead: Annotated[str, Depends(require_project_lead)]) -> CycleTimeReport:
+    return await get_cycle_time(project_id, db)
 
 @router.get("/sprints/{sprint_id}/burndown", response_model=BurndownReport)
 async def burndown(sprint_id: UUID, db: Db, user_id: CurrentUser) -> BurndownReport:
