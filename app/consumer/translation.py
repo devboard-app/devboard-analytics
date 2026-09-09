@@ -32,7 +32,7 @@ def translate_event(data: dict) -> ActivityEvent:
     event_type = data["event"]
 
     if event_type == "ticket.created":
-        return _build_event(data, "ticket.created", "ticket", data["ticket_id"], data["ticket_key"], CreatedMetadata(story_points=data.get("story_points")))
+        return _build_event(data, "ticket.created", "ticket", data["ticket_id"], data["ticket_key"], CreatedMetadata(story_points=data.get("story_points"), status=data.get("status")))
 
     if event_type == "ticket.assigned":
         return _build_event(data, "ticket.assigned", "ticket", data["ticket_id"], data["ticket_key"], AssignmentMetadata(assignee_id=UUID(data["recipient_id"])))

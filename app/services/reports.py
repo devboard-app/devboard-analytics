@@ -63,8 +63,10 @@ def build_ticket_states(events: list[ActivityEvent], until: datetime | None = No
         md = event.metadata
 
         if event.action == "ticket.created" and isinstance(md, CreatedMetadata):
-            states[ticket_id] = {"key": event.entity_key, "points": int(md.story_points) if md.story_points else None, "status": "todo", "sprint": None,
-                                 "created_at": event.created_at, "done_at": None, "reopened": 0, "active_seconds": 0.0, "entered_working": None}
+            initial = md.status or "todo"
+            states[ticket_id] = {"key": event.entity_key, "points": int(md.story_points) if md.story_points else None, "status": initial, "sprint": None,
+                                 "created_at": event.created_at, "done_at": event.created_at if initial == "done" else None, "reopened": 0, "active_seconds": 0.0,
+                                   "entered_working": event.created_at if initial in WORKING else None}
 
         elif event.action == "ticket.deleted":
             states.pop(ticket_id, None)
