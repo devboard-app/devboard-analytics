@@ -17,6 +17,8 @@ STREAM = "devboard:events"
 GROUP = "devboard-analytics-group"
 CONSUMER = "devboard-analytics-1"
 
+MAX_ATTEMPTS = 3
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,11 @@ async def run() -> None:
             if claimed:
                 logger.info(f"Reclaimed {len(claimed)} pending messages")
 
+            attempts = {
+                entry["message_id"]: int(entry["times_delivered"])
+                for entry in await redis.xpending_range(STREAM, GROUP, min="-", max="+", count=100)
+            } if claimed else {}
+
             results = await redis.xreadgroup(GROUP, CONSUMER, {STREAM: ">"}, count=10, block=5000)
             all_messages = claimed + (results[0][1] if results else []) #type:ignore
 
@@ -60,6 +67,16 @@ async def run() -> None:
                 if data.get("event") in IGNORED_ACTIONS:
                     await redis.xack(STREAM, GROUP, message_id)
                     logger.info(f"Ignored event {data.get('event')} for message {message_id}")
+                    continue
+                if attempts.get(message_id, 1) > MAX_ATTEMPTS:
+                    await db.failed_events.insert_one({
+                        "message_id": message_id,
+                        "raw_data": data,
+                        "error": "max attempts exceeded",
+                        "failed_at": datetime.now(timezone.utc)
+                    })
+                    await redis.xack(STREAM, GROUP, message_id)
+                    logger.error(f"Gave up on {message_id} after {attempts[message_id]} attempts")
                     continue
                 try:
                     event=translate_event(data)
@@ -77,6 +94,8 @@ async def run() -> None:
                     })
                     await redis.xack(STREAM, GROUP, message_id)
                     logger.error(f"Failed to process event {data}: {e}")
+                except Exception: 
+                    logger.exception(f"Write failed for message {message_id}")
         except Exception as e :  # noqa: BLE001
             logger.error(f"Consumer error: {e}")
             await asyncio.sleep(2)
