@@ -42,8 +42,14 @@ async def get_project_role(user_id: UUID, project_id: UUID) -> str:
     except httpx.TransportError:
         logger.warning("devboard-work service is unavailable", exc_info=True)
         raise ServiceUnavailableException("Authorization service")
+
+    if response.status_code >= 500:
+        logger.error(f"Membership check returned {response.status_code}")
+        raise ServiceUnavailableException("Authorization service")
+
     if response.status_code != 200:
         raise ForbiddenException
+    
     return response.json()["role"]
 
 
