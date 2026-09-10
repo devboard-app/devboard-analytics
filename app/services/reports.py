@@ -52,53 +52,69 @@ async def get_who_did_what(project_id: UUID, db: AsyncIOMotorDatabase, actor: UU
 
     return ActivitySummary(project_id=project_id, total_events=sum(a.total for a in actors), actors=actors)
 
+def _apply_event(states: dict[UUID, dict], event: ActivityEvent) -> None:
+    ticket_id = event.entity_id
+    md = event.metadata
+
+    if event.action == "ticket.created" and isinstance(md, CreatedMetadata):
+        initial = md.status or "todo"
+        states[ticket_id] = {"key": event.entity_key, "points": int(md.story_points) if md.story_points else None, "status": initial, "sprint": None,
+                             "created_at": event.created_at, "done_at": event.created_at if initial == "done" else None, "reopened": 0, "active_seconds": 0.0,
+                               "entered_working": event.created_at if initial in WORKING else None}
+
+    elif event.action == "ticket.deleted":
+        states.pop(ticket_id, None)
+
+    elif ticket_id not in states:
+        return
+
+    elif event.action == "ticket.updated" and isinstance(md, UpdatedMetadata):
+        if md.field == "status":
+            # tracking active ticket time
+            state = states[ticket_id]
+            was, now = state["status"], md.to
+            state["status"] = now
+
+            if was in WORKING and now not in WORKING:
+                state["active_seconds"] += (event.created_at - state["entered_working"]).total_seconds()
+            if now in WORKING and was not in WORKING:
+                state["entered_working"] = event.created_at
+            if now == "done":
+                state["done_at"] = event.created_at
+            if was == "done":
+                state["reopened"] += 1
+
+        elif md.field == "story_points":
+            states[ticket_id]["points"] = int(md.to) if md.to else None
+
+    elif event.action == "ticket.sprint_added" and isinstance(md, SprintAssignmentMetadata):
+        states[ticket_id]["sprint"] = md.sprint_id
+
+    elif event.action == "ticket.sprint_removed":
+        states[ticket_id]["sprint"] = None
+
 def build_ticket_states(events: list[ActivityEvent], until: datetime | None = None) -> dict[UUID, dict]:
     """Turn a list of changes into the current state of every ticket"""
     states: dict[UUID, dict] = {}
-
     for event in events:
         if until is not None and event.created_at > until:
             break
-        ticket_id = event.entity_id
-        md = event.metadata
-
-        if event.action == "ticket.created" and isinstance(md, CreatedMetadata):
-            initial = md.status or "todo"
-            states[ticket_id] = {"key": event.entity_key, "points": int(md.story_points) if md.story_points else None, "status": initial, "sprint": None,
-                                 "created_at": event.created_at, "done_at": event.created_at if initial == "done" else None, "reopened": 0, "active_seconds": 0.0,
-                                   "entered_working": event.created_at if initial in WORKING else None}
-
-        elif event.action == "ticket.deleted":
-            states.pop(ticket_id, None)
-
-        elif ticket_id not in states:
-            continue
-
-        elif event.action == "ticket.updated" and isinstance(md, UpdatedMetadata):
-            if md.field == "status":
-                # tracking active ticket time
-                state = states[ticket_id]
-                was, now = state["status"], md.to
-                state["status"] = now
-
-                if was in WORKING and now not in WORKING:
-                    state["active_seconds"] += (event.created_at - state["entered_working"]).total_seconds()
-                if now in WORKING and was not in WORKING:
-                    state["entered_working"] = event.created_at
-                if now == "done":
-                    state["done_at"] = event.created_at
-                if was == "done":
-                    state["reopened"] += 1
-
-            elif md.field == "story_points":
-                states[ticket_id]["points"] = int(md.to) if md.to else None
-
-        elif event.action == "ticket.sprint_added" and isinstance(md, SprintAssignmentMetadata):
-            states[ticket_id]["sprint"] = md.sprint_id
-
-        elif event.action == "ticket.sprint_removed":
-            states[ticket_id]["sprint"] = None
+        _apply_event(states, event)
     return states
+
+def build_ticket_snapshots(events: list[ActivityEvent], checkpoints: list[datetime]) -> dict[datetime, dict[UUID, dict]]:
+    """Walk events once (oldest first) and take a state snapshot at each checkpoint timestamp."""
+    states: dict[UUID, dict] = {}
+    snapshots: dict[datetime, dict[UUID, dict]] = {}
+    idx = 0
+
+    for checkpoint in sorted(set(checkpoints)):
+        while idx < len(events) and events[idx].created_at <= checkpoint:
+            _apply_event(states, events[idx])
+            idx += 1
+        snapshots[checkpoint] = {ticket_id: dict(state) for ticket_id, state in states.items()}
+
+    return snapshots
 
 async def get_velocity(project_id: UUID, db: AsyncIOMotorDatabase) -> VelocityReport:
     """How many points each sprint took on, and how many it delivered.
@@ -130,6 +146,9 @@ async def get_velocity(project_id: UUID, db: AsyncIOMotorDatabase) -> VelocityRe
     """
     sprints = await get_project_sprints(project_id, db)
     events = await get_ticket_history(project_id, db)
+
+    valid_sprints = [s for s in sprints if isinstance(s.metadata, SprintMetadata)]
+    snapshots = build_ticket_snapshots(events, [s.created_at for s in valid_sprints])
     final = build_ticket_states(events)
 
     rows = []
@@ -138,7 +157,7 @@ async def get_velocity(project_id: UUID, db: AsyncIOMotorDatabase) -> VelocityRe
         if not isinstance(md, SprintMetadata):
             continue
         sprint_id = sprint.entity_id
-        at_start = build_ticket_states(events, until=sprint.created_at)
+        at_start = snapshots[sprint.created_at]
 
         committed = sum(t["points"] or 0 for t in at_start.values() if t["sprint"] == sprint_id)
         done = [t for t in final.values() if t["sprint"] == sprint_id and t["status"] == "done"]
@@ -168,14 +187,19 @@ async def get_burndown(sprint: ActivityEvent, db: AsyncIOMotorDatabase) -> Burnd
 
     events = await get_ticket_history(sprint.project_id, db)
 
-    at_start = build_ticket_states(events, until=sprint.created_at)
-    committed = sum(t["points"] or 0 for t in at_start.values() if t["sprint"] == sprint.entity_id)
-
     all_days: list[date] =[]
     day = start
     while day <= end:
         all_days.append(day)
         day += timedelta(days=1)
+
+    today = datetime.now(timezone.utc).date()
+    counted_days = [d for d in all_days if d <= today]
+    cutoffs = [datetime.combine(d, time.max) for d in counted_days]  # each day 23:59:59.999
+
+    snapshots = build_ticket_snapshots(events, [sprint.created_at] + cutoffs)
+    at_start = snapshots[sprint.created_at]
+    committed = sum(t["points"] or 0 for t in at_start.values() if t["sprint"] == sprint.entity_id)
 
     work_days = [d for d in all_days if d.weekday() < 5]
     steps = max(len(work_days) - 1, 1)
@@ -184,16 +208,11 @@ async def get_burndown(sprint: ActivityEvent, db: AsyncIOMotorDatabase) -> Burnd
         elapsed = max(sum(1 for w in work_days if w <= current) - 1, 0)
         return round(committed * (1 - elapsed / steps), 2)
 
-    today = datetime.now(timezone.utc).date()
     days: list[BurndownDay] = []
     unpointed = 0
 
-    for current in all_days:
-        if current > today:
-            break
-
-        cutoff = datetime.combine(current, time.max) # today 23:59:59.999
-        states = build_ticket_states(events, until=cutoff)
+    for current, cutoff in zip(counted_days, cutoffs):
+        states = snapshots[cutoff]
 
         in_sprint = [t for t in states.values() if t["sprint"] == sprint.entity_id]
         open_tickets = [t for t in in_sprint if t["status"] != "done"]
