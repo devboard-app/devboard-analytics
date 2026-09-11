@@ -97,6 +97,7 @@ async def run() -> None:
                     logger.error(f"Failed to process event {data}: {e}")
                 except Exception: 
                     logger.exception(f"Write failed for message {message_id}")
+                    raise
         except Exception as e :  # noqa: BLE001
             logger.error(f"Consumer error: {e}")
             await asyncio.sleep(2)
