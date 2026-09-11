@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+STATUS_VALUES = {"backlog", "todo", "in_progress", "in_review", "done"}
 
 class EmptyMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -12,11 +13,26 @@ class CreatedMetadata(BaseModel):
     story_points: str | None
     status: str | None = None
 
+    @model_validator(mode="after")
+    def check_status_value(self):
+        if self.status is not None and self.status not in STATUS_VALUES:
+            raise ValueError(f"Invalid status value: {self.status!r}")
+        return self
+
 class UpdatedMetadata(BaseModel):
     field: Literal["status", "priority", "type", "due_date", "title", "description", "story_points"]
     from_: str | None = Field(default=None, alias="from")
     to: str | None = None
 
+    @model_validator(mode="after")
+    def check_status_values(self):
+        if self.field == "status":
+            if self.from_ is not None and self.from_ not in STATUS_VALUES:
+                raise ValueError(f"Invalid status value in 'from': {self.from_!r}")
+            if self.to is not None and self.to not in STATUS_VALUES:
+                raise ValueError(f"Invalid status value in 'to': {self.to!r}")
+        return self
+    
 class AssignmentMetadata(BaseModel):
     assignee_id: UUID
     assignee_email: str | None = None

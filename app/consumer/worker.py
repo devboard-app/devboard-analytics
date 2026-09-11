@@ -18,6 +18,7 @@ GROUP = "devboard-analytics-group"
 CONSUMER = "devboard-analytics-1"
 
 MAX_ATTEMPTS = 3
+PENDING_SCAN_LIMIT = 5000 #must cover xautoclaim's max reclaim capacity (50 iterations * count=100)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -57,7 +58,7 @@ async def run() -> None:
 
             attempts = {
                 entry["message_id"]: int(entry["times_delivered"])
-                for entry in await redis.xpending_range(STREAM, GROUP, min="-", max="+", count=100)
+                for entry in await redis.xpending_range(STREAM, GROUP, min="-", max="+", count=PENDING_SCAN_LIMIT)
             } if claimed else {}
 
             results = await redis.xreadgroup(GROUP, CONSUMER, {STREAM: ">"}, count=10, block=5000)
@@ -96,6 +97,7 @@ async def run() -> None:
                     logger.error(f"Failed to process event {data}: {e}")
                 except Exception: 
                     logger.exception(f"Write failed for message {message_id}")
+                    raise
         except Exception as e :  # noqa: BLE001
             logger.error(f"Consumer error: {e}")
             await asyncio.sleep(2)
