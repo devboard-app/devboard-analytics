@@ -10,7 +10,7 @@ class EmptyMetadata(BaseModel):
 
 class CreatedMetadata(BaseModel):
     story_points: str | None
-    status: str | None = None
+    status: Literal["backlog", "todo", "in_progress", "in_review", "done"] | None = None
 
 class UpdatedMetadata(BaseModel):
     field: Literal["status", "priority", "type", "due_date", "title", "description", "story_points"]
