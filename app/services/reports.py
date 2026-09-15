@@ -195,7 +195,7 @@ async def get_burndown(sprint: ActivityEvent, db: AsyncIOMotorDatabase) -> Burnd
 
     today = datetime.now(timezone.utc).date()
     counted_days = [d for d in all_days if d <= today]
-    cutoffs = [datetime.combine(d, time.max) for d in counted_days]  # each day 23:59:59.999
+    cutoffs = [datetime.combine(d, time.max, tzinfo=timezone.utc) for d in counted_days]  # each day 23:59:59.999
 
     snapshots = build_ticket_snapshots(events, [sprint.created_at] + cutoffs)
     at_start = snapshots[sprint.created_at]
