@@ -38,8 +38,11 @@ def register_exception_handlers(app: FastAPI):
         for error in exc.errors():
             field = str(error["loc"][-1]) if error["loc"] else "non_field_errors"
             errors.setdefault(field, []).append(error["msg"])
+        if not errors:
+            return JSONResponse(status_code=422, content={"detail": "Invalid request.", "errors": errors})
         return JSONResponse(status_code=422, content={"detail": next(iter(errors.values()))[0], "errors": errors})
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request, exc):
         return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail, "errors": None})
+    
