@@ -35,11 +35,14 @@ CurrentUser = Annotated[UUID, Depends(get_current_user_id)]
 
 @router.get("/projects/{project_id}/activity/", response_model=PaginatedActivity)
 async def activity(
-    project_id: UUID, db: Db, _member: Annotated[str, Depends(require_project_member)],
+    project_id: UUID, db: Db, user_id: CurrentUser,
+    role: Annotated[str, Depends(require_project_member)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
     actor: UUID | None = None
 ) -> PaginatedActivity:
+    if role != "lead":
+        actor = user_id
     return await get_activity_feed(project_id, limit, offset, db, actor)
 
 
