@@ -10,7 +10,7 @@ class PaginatedActivity(BaseModel):
     count: int
     limit: int
     offset: int
-    result: list[ActivityEvent]
+    results: list[ActivityEvent]
 
 class ActorActivity(BaseModel):
     actor: UUID

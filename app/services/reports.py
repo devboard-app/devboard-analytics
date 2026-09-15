@@ -34,8 +34,8 @@ DAY_SECONDS = 86400
 WORKING = {"in_progress", "in_review"}
 
 async def get_activity_feed(project_id: UUID, limit: int, offset: int, db: AsyncIOMotorDatabase, actor: UUID | None = None) -> PaginatedActivity:
-    result, total = await get_activity_page(project_id, limit, offset, db, actor)
-    return PaginatedActivity(count=total, limit=limit, offset=offset, result=result)
+    results, total = await get_activity_page(project_id, limit, offset, db, actor)
+    return PaginatedActivity(count=total, limit=limit, offset=offset, results=results)
 
 async def get_who_did_what(project_id: UUID, db: AsyncIOMotorDatabase, actor: UUID | None = None) -> ActivitySummary:
     rows = await count_by_actor(project_id, db, actor)
