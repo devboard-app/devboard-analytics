@@ -33,7 +33,7 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 Db = Annotated[AsyncIOMotorDatabase, Depends(get_database)]
 CurrentUser = Annotated[UUID, Depends(get_current_user_id)]
 
-@router.get("/projects/{project_id}/activity", response_model=PaginatedActivity)
+@router.get("/projects/{project_id}/activity/", response_model=PaginatedActivity)
 async def activity(
     project_id: UUID, db: Db, _member: Annotated[str, Depends(require_project_member)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -43,21 +43,21 @@ async def activity(
     return await get_activity_feed(project_id, limit, offset, db, actor)
 
 
-@router.get("/projects/{project_id}/activity/summary", response_model=ActivitySummary)
+@router.get("/projects/{project_id}/activity/summary/", response_model=ActivitySummary)
 async def who_did_what(project_id: UUID, db: Db, user_id: CurrentUser, role: Annotated[str, Depends(require_project_member)]) -> ActivitySummary:
     # lead sees everyone, contributor sees only themselves.
     return await get_who_did_what(project_id, db, actor=None if role == "lead" else user_id)
 
 
-@router.get("/projects/{project_id}/velocity", response_model=VelocityReport)
+@router.get("/projects/{project_id}/velocity/", response_model=VelocityReport)
 async def velocity(project_id: UUID, db: Db, _lead: Annotated[str, Depends(require_project_lead)]) -> VelocityReport:
     return await get_velocity(project_id, db)
 
-@router.get("/projects/{project_id}/cycle-time", response_model=CycleTimeReport)
+@router.get("/projects/{project_id}/cycle-time/", response_model=CycleTimeReport)
 async def cycle_time(project_id: UUID, db: Db, _lead: Annotated[str, Depends(require_project_lead)]) -> CycleTimeReport:
     return await get_cycle_time(project_id, db)
 
-@router.get("/sprints/{sprint_id}/burndown", response_model=BurndownReport)
+@router.get("/sprints/{sprint_id}/burndown/", response_model=BurndownReport)
 async def burndown(sprint_id: UUID, db: Db, user_id: CurrentUser) -> BurndownReport:
     sprint = await get_sprint(sprint_id, db)
     if sprint is None:
