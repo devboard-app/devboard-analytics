@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+import socket
 from datetime import datetime, timezone
 
 from pydantic import ValidationError
@@ -16,7 +18,7 @@ from .translation import created_at_from_message_id, translate_event
 
 STREAM = "devboard:events"
 GROUP = "devboard-analytics-group"
-CONSUMER = "devboard-analytics-1"
+CONSUMER = os.environ.get("CONSUMER_NAME", socket.gethostname())
 
 MAX_ATTEMPTS = 3
 PENDING_SCAN_LIMIT = 5000 #must cover xautoclaim's max reclaim capacity (50 iterations * count=100)

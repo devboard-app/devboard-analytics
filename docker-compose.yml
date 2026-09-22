@@ -18,7 +18,10 @@ services:
   devboard-analytics-worker:
     build:
       context: .
-    container_name: devboard-analytics-worker
+    # No container_name here, unlike every other service: a fixed name blocks
+    # `docker compose up --scale ...=N`. worker.py reads CONSUMER_NAME
+    # (falling back to the container hostname, unique per replica) instead of
+    # a hardcoded consumer name, so this is now safe to scale.
     restart: unless-stopped
     env_file: .env
     command: python -m app.consumer.worker
