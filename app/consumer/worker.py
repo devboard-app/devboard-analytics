@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
+from app.cache import bump_report_version, connect_to_redis
 from app.config import settings
 from app.database import connect_to_mongo, ensure_indexes, get_database
 from app.schemas.events import IGNORED_ACTIONS
@@ -38,6 +39,7 @@ async def run() -> None:
     await connect_to_mongo()
     db = get_database()
     await ensure_indexes()
+    await connect_to_redis()
     redis = Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_timeout=10)
     await ensure_group(redis)
     logger.info("Consumer started, waiting for events...")
@@ -84,6 +86,7 @@ async def run() -> None:
                     event.id=data.get("outbox_id") or message_id 
                     event.created_at=created_at_from_message_id(message_id) or datetime.now(timezone.utc)
                     await record_event(event, db)
+                    await bump_report_version(event.project_id)
                     await redis.xack(STREAM, GROUP, message_id)
                     logger.info(f"Processed {event.action} for {event.entity_key}")
                 except (ValidationError, ValueError, KeyError) as e:
