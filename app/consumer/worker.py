@@ -48,6 +48,13 @@ async def run() -> None:
 
     while True:
         try:
+            try:
+                await db.command("ping")
+            except Exception:
+                logger.warning("MongoDB unreachable, pausing before retrying")
+                await asyncio.sleep(5)
+                continue
+
             claimed = []
             cursor = "0-0"
             for _ in range(50):
