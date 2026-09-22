@@ -1,3 +1,4 @@
+import hmac
 import logging
 from typing import Annotated
 from uuid import UUID
@@ -17,7 +18,7 @@ from app.http_client import get_http_client
 logger = logging.getLogger(__name__)
 
 async def verify_internal_key(x_service_key: Annotated[str, Header(...)]):
-    if x_service_key != settings.INTERNAL_API_KEY:
+    if not hmac.compare_digest(x_service_key, settings.INTERNAL_API_KEY):
         raise ForbiddenException
 
 async def get_current_user_id(authorization: Annotated[str | None, Header(...)] = None) -> UUID:
