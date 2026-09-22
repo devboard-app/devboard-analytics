@@ -4,6 +4,7 @@ from uuid import UUID
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from app.cache import get_cached_report, get_report_version, set_cached_report
 from app.exceptions import SprintWindowMissingException
 from app.repositories.reports import (
     count_by_actor,
@@ -144,6 +145,12 @@ async def get_velocity(project_id: UUID, db: AsyncIOMotorDatabase) -> VelocityRe
           ]
         }
     """
+    version = await get_report_version(project_id)
+    cache_key = f"report:velocity:{project_id}:{version}"
+    cached = await get_cached_report(cache_key)
+    if cached is not None:
+        return VelocityReport.model_validate_json(cached)
+
     sprints = await get_project_sprints(project_id, db)
     events = await get_ticket_history(project_id, db)
 
@@ -173,7 +180,9 @@ async def get_velocity(project_id: UUID, db: AsyncIOMotorDatabase) -> VelocityRe
         ))
 
     average = sum(r.completed_points for r in rows) / len(rows) if rows else 0.0
-    return VelocityReport(project_id=project_id, sprints=rows, average_points=average)
+    report = VelocityReport(project_id=project_id, sprints=rows, average_points=average)
+    await set_cached_report(cache_key, report.model_dump_json())
+    return report
 
 async def get_burndown(sprint: ActivityEvent, db: AsyncIOMotorDatabase) -> BurndownReport:
     """Remaining work per day of a sprint, nex to the ideal line
@@ -184,6 +193,12 @@ async def get_burndown(sprint: ActivityEvent, db: AsyncIOMotorDatabase) -> Burnd
 
     start = date.fromisoformat(md.start_date)
     end = date.fromisoformat(md.end_date)
+
+    version = await get_report_version(sprint.project_id)
+    cache_key = f"report:burndown:{sprint.entity_id}:{version}"
+    cached = await get_cached_report(cache_key)
+    if cached is not None:
+        return BurndownReport.model_validate_json(cached)
 
     events = await get_ticket_history(sprint.project_id, db)
 
@@ -225,7 +240,7 @@ async def get_burndown(sprint: ActivityEvent, db: AsyncIOMotorDatabase) -> Burnd
         ))
         unpointed = sum(1 for t in in_sprint if t["points"] is None)
 
-    return BurndownReport(
+    report = BurndownReport(
         sprint_id=sprint.entity_id,
         sprint_name=sprint.entity_key,
         start_date=start,
@@ -234,9 +249,17 @@ async def get_burndown(sprint: ActivityEvent, db: AsyncIOMotorDatabase) -> Burnd
         unpointed_tickets=unpointed,
         days=days
     )
+    await set_cached_report(cache_key, report.model_dump_json())
+    return report
 
 async def get_cycle_time(project_id: UUID, db: AsyncIOMotorDatabase) -> CycleTimeReport:
     """How long a ticket take: waiting (lead time) vs actually worked on (cycle time)"""
+    version = await get_report_version(project_id)
+    cache_key = f"report:cycle_time:{project_id}:{version}"
+    cached = await get_cached_report(cache_key)
+    if cached is not None:
+        return CycleTimeReport.model_validate_json(cached)
+
     states = build_ticket_states(await get_ticket_history(project_id, db))
 
     rows: list[TicketCycleTime] = []
@@ -255,10 +278,12 @@ async def get_cycle_time(project_id: UUID, db: AsyncIOMotorDatabase) -> CycleTim
     leads = [r.lead_time_days for r in rows]
     cycles = [r.cycle_time_days for r in rows if r.cycle_time_days is not None]
 
-    return CycleTimeReport(
+    report = CycleTimeReport(
         project_id=project_id,
         completed_tickets=len(rows),
         median_lead_time_days=round(median(leads), 2) if leads else 0.0,
         median_cycle_time_days=round(median(cycles), 2) if cycles else 0.0,
         tickets=rows,
     )
+    await set_cached_report(cache_key, report.model_dump_json())
+    return report
