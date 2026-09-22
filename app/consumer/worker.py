@@ -81,7 +81,7 @@ async def run() -> None:
                     continue
                 try:
                     event=translate_event(data)
-                    event.id=message_id
+                    event.id=data.get("outbox_id") or message_id 
                     event.created_at=created_at_from_message_id(message_id) or datetime.now(timezone.utc)
                     await record_event(event, db)
                     await redis.xack(STREAM, GROUP, message_id)
