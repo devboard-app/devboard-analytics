@@ -185,6 +185,4 @@ pytest
 
 ## Not done yet
 
-- **Only one worker.** The consumer name is fixed (`devboard-analytics-1`). Two workers would break retries.
 - **No route for `get_recent_events`.** The function exists, nothing calls it.
-- **Reports rebuild ticket state from the event log** on every request. Nothing is cached, so very big projects will be slower.
