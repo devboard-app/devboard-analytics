@@ -1,188 +1,190 @@
 # devboard-analytics
 
-The activity log for DevBoard, and eventually the reports built on top of it.
+**What happened, and how are we doing?** It keeps a log of everything that happens in DevBoard. It builds reports from that log: activity, velocity, burndown and cycle time.
 
-It consumes the `devboard:events` Redis stream, translates each event into a typed
-`ActivityEvent`, and stores it in MongoDB. Every service that publishes to the stream ends
-up here, which makes this collection the closest thing DevBoard has to a system of record
-for "what happened".
+- **Port:** `8006`
+- **Stack:** FastAPI, MongoDB (Motor), Redis Streams
+- **Two containers, one image:**
 
-FastAPI + Motor + MongoDB + Redis Streams. Port **8006**.
-
-## Why this is one service and not two
-
-The original design had Django core writing an activity log into `core_db`, with a
-separate read-only FastAPI service computing reports off it. That doesn't survive contact
-with a second publisher: `ticket.commit_linked` originates in devboard-integrations, not
-core, and core has no business owning a table it doesn't write.
-
-So the log lives in its own service, with its own store, and anything that wants to record
-activity publishes to the stream. Reports are computed in the same service because they
-read nothing but this collection.
-
-Mongo rather than Postgres because event metadata genuinely varies by action — a label
-event and a commit event have nothing in common but the envelope. The rest of DevBoard is
-Postgres; this is the one place where a document store earns its keep.
-
-## Two processes, one image
-
-| container | command | role |
+| Container | Command | Job |
 |---|---|---|
-| `devboard-analytics` | `uvicorn app.main:app` | HTTP API |
-| `devboard-analytics-worker` | `python -m app.consumer.worker` | stream consumer |
+| `devboard-analytics` | `uvicorn app.main:app` | HTTP API (the reports). |
+| `devboard-analytics-worker` | `python -m app.consumer.worker` | Reads the event stream and fills MongoDB. |
 
-The worker does not build the FastAPI app — it calls `connect_to_mongo()` directly. Both
-call `ensure_indexes()` on startup; it's idempotent, so whichever starts first wins.
+---
 
-## Where it sits
+## Start here (about 5 minutes)
 
-```
-devboard-work ────────┐
-                      ├──> devboard:events ──> analytics-worker ──> Mongo (events)
-devboard-integrations ┘                   └──> integrations (separate consumer group)
-```
+1. Open a terminal in `devboard-infra`.
+2. Run `setup.bat`. It starts MongoDB, creates the analytics user and starts both containers.
+3. Open `http://localhost:8006/health`. You should see `{"status": "ok"}`.
+4. Want fake data to try the reports? See "Demo data" below.
 
-Analytics translates 17 of the 19 event types on the stream. It talks to nothing else —
-no outbound HTTP, no other service depends on it yet.
+Only want this service? MongoDB and Redis must already be running. Then:
 
-## Running it
-
-```
-cd ..\devboard-infra
-setup.bat        # brings up devboard-mongo along with the rest
-redeploy.bat
-```
-
-There are no migrations. Indexes are created on startup in `ensure_indexes()`.
-
-Standalone, with Mongo and Redis already up:
-
-```
+```bash
 docker compose up --build
 ```
 
-## Configuration
+There are no migrations. Indexes are created when the service starts.
 
-| var | notes |
+---
+
+## What it does
+
+1. **Listens** to the `devboard:events` Redis stream.
+2. **Translates** each event into one clean `ActivityEvent` and saves it in MongoDB.
+3. **Serves reports** built from the saved events.
+
+Every service that publishes to the stream ends up here. This is DevBoard's record of "what happened".
+
+---
+
+## How it fits
+
+```
+devboard-work ────────┐
+                      ├──> devboard:events ──> analytics-worker ──> MongoDB (events)
+devboard-integrations ┘                   └──> integrations (its own reader)
+
+Browser ──JWT──> analytics API ──> devboard-work  (what is my role in this project?)
+                              └──> MongoDB
+```
+
+Analytics has no user data. For every report request it asks devboard-work for the caller's project role.
+
+---
+
+## Reports
+
+Base path: `/reports`. All need `Authorization: Bearer <jwt>`.
+
+| Method | Path | Who can call | What you get |
+|---|---|---|---|
+| `GET` | `/reports/projects/{project_id}/activity/` | Project members | Activity feed. Uses `limit` (max 100) and `offset`. Leads can add `actor=<user_id>`. |
+| `GET` | `/reports/projects/{project_id}/activity/summary/` | Project members | Who did what. |
+| `GET` | `/reports/projects/{project_id}/velocity/` | Project **leads** | Points planned and points finished, per sprint. Plus the average. |
+| `GET` | `/reports/projects/{project_id}/cycle-time/` | Project **leads** | How long tickets take. Median lead time and cycle time. |
+| `GET` | `/reports/sprints/{sprint_id}/burndown/` | Project **leads** | Work left per day, next to the ideal line. |
+
+**Contributors see only their own activity.** Leads see everyone's.
+
+Terms:
+
+- **Lead time:** from ticket created to done.
+- **Cycle time:** time the ticket was actually being worked on.
+- **Velocity:** story points finished in a sprint.
+
+Other routes:
+
+| Method | Path | What it does |
+|---|---|---|
+| `POST` | `/events/` | Save one event by hand. Needs `X-Service-Key`. Kept for backfill. Nothing calls it today. |
+| `GET` | `/health` | Is the service up? |
+| `GET` | `/health/db` | Can it reach MongoDB? |
+
+Errors: `401` no or bad token. `403` not allowed. `404` sprint not found. `409` sprint has no start or end date. `503` devboard-work is down.
+
+---
+
+## How events get saved
+
+```
+Redis stream ──> worker
+                  ├─ event is ignored? ──> ack and skip
+                  ├─ translate it ──> ActivityEvent
+                  │     └─ bad event? ──> failed_events, ack
+                  ├─ id         = the Redis message id
+                  ├─ created_at = time inside the Redis message id
+                  └─ insert into events, ack
+```
+
+Why it is safe:
+
+1. **Same event twice is fine.** The Redis id is the MongoDB `_id`. A second insert is ignored.
+2. **You can rebuild everything.** A new consumer group reads the stream from the start. Delete the Mongo volume, restart, and the log comes back from Redis.
+3. **Times stay true.** `created_at` comes from the Redis id, not from "now". Rebuilding does not change history.
+4. **Failures are capped.** A message that fails 3 times goes to `failed_events`.
+5. **Stuck messages are retried.** Messages pending for 30 seconds are picked up again.
+
+### Names are translated
+
+The stored name is not always the published name. Example: `ticket.status_changed` is saved as `ticket.updated` with `metadata.field = "status"`. Every field change has one shape, so reports are simpler.
+
+`app/consumer/translation.py` does this. An **unknown event fails** and goes to `failed_events`. New event types must be added on purpose.
+
+`comment.mentioned` is ignored. It is a notification, not activity.
+
+### What is saved per event
+
+Each event has a fixed metadata shape. It is checked when saved.
+
+| Actions | Metadata |
 |---|---|
-| `MONGO_URI` | must include the database name — `get_default_database()` relies on it |
-| `REDIS_URL` | must be `redis://devboard-redis:6379/0` in docker — compose does **not** override it, and `.env.example` still says `localhost` |
-| `INTERNAL_API_KEY` | checked as `X-Service-Key` on `POST /events` |
-| `JWT_SECRET` `JWT_ALGORITHM` | declared but not used yet — for report permissions |
+| `ticket.created` | Story points and status |
+| `ticket.deleted` | Empty |
+| `sprint.started`, `sprint.completed` | Start date and end date |
+| `ticket.updated` | `field`, `from`, `to` |
+| `ticket.assigned`, `ticket.unassigned` | Assignment |
+| `ticket.epic_linked`, `ticket.epic_unlinked` | Epic |
+| `label.applied`, `label.removed` | Label |
+| `ticket.sprint_added`, `ticket.sprint_removed` | Sprint |
+| `ticket.commit_linked` | Commit |
+| `comment.created`, `comment.updated`, `comment.deleted` | Comment |
 
-## The event pipeline
+---
 
-```
-XADD devboard:events           (work / integrations)
-   │
-   ▼
-worker: xautoclaim + xreadgroup
-   │
-   ├─ action in IGNORED_ACTIONS? ──> ack and skip
-   │
-   ├─ translate_event(data) ──> ActivityEvent
-   │     └─ ValidationError / ValueError / KeyError ──> failed_events, ack
-   │
-   ├─ id         = Redis message id
-   ├─ created_at = timestamp parsed out of the message id
-   │
-   └─ insert into events, ack
-```
+## MongoDB
 
-### Translation
+Database: `activity_db`.
 
-`app/consumer/translation.py` is the interesting file. It maps the wire vocabulary
-published by other services onto this service's own action/metadata vocabulary. Two
-consequences worth knowing:
-
-- **The stored vocabulary is not the published one.** `ticket.status_changed` on the wire
-  is stored as `action="ticket.updated"` with `metadata.field="status"`. All field changes
-  share one action with a `field` tag, so the read side has one shape to handle instead of
-  seven. The cost is that burndown queries filter on
-  `action == "ticket.updated" AND metadata.field == "status" AND metadata.to == "Done"`
-  rather than a bare action match. That's a deliberate consistency-over-directness call.
-- **An unknown event raises `ValueError` and lands in `failed_events`.** That's on purpose:
-  new event types have to be consciously admitted, not silently absorbed.
-
-### Metadata shapes
-
-`ActivityEvent.metadata` is a union, and a `model_validator` enforces that the shape
-matches the action. Mongo would happily store anything; this is what stops "flexible"
-becoming "unknowable". The reports layer can assume every row is exactly one of these:
-
-| actions | metadata |
+| Collection | What is in it |
 |---|---|
-| `ticket.created` `ticket.deleted` `sprint.started` `sprint.completed` | `EmptyMetadata` |
-| `ticket.updated` | `UpdatedMetadata` — `field`, `from`, `to` |
-| `ticket.assigned` `ticket.unassigned` | `AssignmentMetadata` |
-| `ticket.epic_linked` `ticket.epic_unlinked` | `EpicMetadata` |
-| `label.applied` `label.removed` | `LabelMetadata` |
-| `ticket.sprint_added` `ticket.sprint_removed` | `SprintAssignmentMetadata` |
-| `ticket.commit_linked` | `CommitMetadata` |
-| `comment.created` `comment.updated` `comment.deleted` | `CommentMetadata` |
+| `events` | The activity log. |
+| `failed_events` | Events that could not be saved, with the raw data. |
 
-`comment.mentioned` is in `IGNORED_ACTIONS` — integrations turns it into a notification,
-but it isn't recorded as activity.
+Indexes on `events`:
 
-### Idempotency and replay
+- `created_at` (newest first)
+- `project_id` + `created_at`
+- `entity_type` + `entity_id`
+- `actor` + `created_at`
 
-The Redis message id becomes Mongo's `_id`, and `insert_event` swallows `DuplicateKeyError`.
-So redelivery is a no-op, and the consumer group is created with `id="0"` — meaning a fresh
-group replays the entire stream and converges on the same collection. You can drop the
-Mongo volume and rebuild the activity log from Redis.
+---
 
-`created_at` is derived from the millisecond prefix of the Redis message id, not from
-ingestion time. Without that, replaying a backlog would stamp every historical event with
-today's date and destroy the timeline.
+## Settings
 
-## API
+Copy `.env.example` to `.env`.
 
-```
-POST /events          X-Service-Key   ingest a single event
-GET  /health
-GET  /health/db
-```
+| Variable | What it is |
+|---|---|
+| `MONGO_URI` | Must include the database name (`.../activity_db`). |
+| `REDIS_URL` | In Docker use `redis://devboard-redis:6379/0`. Compose does **not** override it, and `.env.example` may still say `localhost`. |
+| `JWT_SECRET` | Same value as devboard-auth. Checks the caller's token. |
+| `INTERNAL_API_KEY` | Checked as `X-Service-Key` on `POST /events/`. Also sent to devboard-work. |
+| `DEVBOARD_WORK_URL` | Where devboard-work lives. Used for role checks. |
 
-`POST /events` predates the Redis consumer — it was how Django core was originally going to
-push events in. Nothing calls it now. It's kept for backfill and manual replay; if that
-stops being useful it should be deleted rather than left open.
+`devboard-infra\setup.bat` also reads `ANALYTICS_DB_PASSWORD` from this `.env` to create the MongoDB user.
 
-## Collections
+---
 
-- `events` — the activity log. `_id` is the Redis message id for consumer-ingested rows.
-- `failed_events` — events that failed translation or validation, with the raw payload.
+## Demo data
 
-Indexes, all on `events`:
+The stack must be up. Run from this folder:
 
-```
-created_at ↓
-(project_id ↑, created_at ↓)
-(entity_type ↑, entity_id ↑)
-(actor ↑, created_at ↓)
+1. `.venv\Scripts\python.exe scripts\bootstrap_demo.py` – creates users, a team and a project. Writes `scripts\demo_ids.json`.
+2. `.venv\Scripts\python.exe scripts\seed_events.py --wipe` – adds a two-sprint story to MongoDB. Set `MONGO_URI` first (see the top of the script). `--wipe` deletes existing events.
+
+Tests:
+
+```bash
+pytest
 ```
 
-These are shaped for the reports that don't exist yet: a project timeline, per-entity
-history, and per-person activity.
+---
 
-## Not built yet
+## Not done yet
 
-**Reports.** `app/routers/reports.py`, `app/services/reports.py` and
-`app/schemas/reports.py` are empty and the router is not registered. Velocity, burndown and
-who-did-what are the reason this service exists and none of them are written.
-
-The open design question is where the data for them comes from. Velocity needs a ticket's
-story points *at the moment it was completed*, and the status event doesn't carry that —
-so either reports replay the log to reconstruct it, the publisher enriches the event, or
-analytics calls back into devboard-work. That choice should be made before the first
-endpoint is written, because it decides whether this is a query problem or a wire-format
-change across three repos.
-
-Also outstanding:
-
-- `app/exceptions.py` and `app/exception_handlers.py` are empty; there is no error layer.
-- `get_recent_events` exists with no route.
-- `JWT_SECRET` is loaded but nothing decodes a token — report permissions
-  (contributor sees own activity, lead sees everyone's) are unimplemented.
-- The consumer dead-letters schema errors immediately but retries infrastructure errors
-  forever with no cap.
-- `CONSUMER` is a hardcoded name, so only one worker replica is safe.
+- **Only one worker.** The consumer name is fixed (`devboard-analytics-1`). Two workers would break retries.
+- **No route for `get_recent_events`.** The function exists, nothing calls it.
+- **Reports rebuild ticket state from the event log** on every request. Nothing is cached, so very big projects will be slower.
