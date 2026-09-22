@@ -8,6 +8,7 @@ from app.services.ingestion import record_event
 
 router = APIRouter(prefix="/events", tags=["events"], dependencies=[Depends(verify_internal_key)])
 
+# No caller today -- real ingestion goes through the Redis stream consumer. Keeping it for future ideas.
 @router.post("/", response_model=ActivityEvent, status_code=201)
 async def create_event(event: ActivityEvent, db: AsyncIOMotorDatabase = Depends(get_database)) -> ActivityEvent:  # noqa: B008
     return await record_event(event, db)
