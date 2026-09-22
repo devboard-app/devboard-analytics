@@ -69,6 +69,8 @@ Base path: `/reports`. All need `Authorization: Bearer <jwt>`.
 
 **Contributors see only their own activity.** Leads see everyone's.
 
+**Velocity, cycle-time and burndown are cached** in Redis per project (burndown per sprint), so a report is instant as long as nothing changed in that project since it was last computed. The cache is invalidated the moment a new event is recorded for that project — not on a timer, so it's never stale.
+
 Terms:
 
 - **Lead time:** from ticket created to done.
@@ -94,18 +96,18 @@ Redis stream ──> worker
                   ├─ event is ignored? ──> ack and skip
                   ├─ translate it ──> ActivityEvent
                   │     └─ bad event? ──> failed_events, ack
-                  ├─ id         = the Redis message id
+                  ├─ id         = the outbox row id if the publisher sent one, else the Redis message id
                   ├─ created_at = time inside the Redis message id
                   └─ insert into events, ack
 ```
 
 Why it is safe:
 
-1. **Same event twice is fine.** The Redis id is the MongoDB `_id`. A second insert is ignored.
+1. **Same event twice is fine.** The id is the MongoDB `_id`. A second insert is ignored — this holds even if the publisher redelivers the same logical event with a new Redis message id, as long as it sends the same outbox id.
 2. **You can rebuild everything.** A new consumer group reads the stream from the start. Delete the Mongo volume, restart, and the log comes back from Redis.
 3. **Times stay true.** `created_at` comes from the Redis id, not from "now". Rebuilding does not change history.
-4. **Failures are capped.** A message that fails 3 times goes to `failed_events`.
-5. **Stuck messages are retried.** Messages pending for 30 seconds are picked up again.
+4. **Failures are capped, but a MongoDB outage doesn't burn through them.** The worker checks MongoDB is reachable before processing anything; while it's down, it waits instead of reading or retrying messages, so a healthy message doesn't get pushed into `failed_events` just because Mongo happened to be briefly unreachable. A message still fails after 3 genuine attempts.
+5. **Stuck messages are retried.** Messages pending for 30 seconds are picked up again, up to 5000 at a time — matched to how many `xautoclaim` can actually reclaim in one pass, so a long pending list doesn't leave messages past the first 100 with an untracked retry count.
 
 ### Names are translated
 
