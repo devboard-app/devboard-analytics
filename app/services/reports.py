@@ -10,6 +10,7 @@ from app.repositories.reports import (
     count_by_actor,
     get_activity_page,
     get_project_sprints,
+    get_ticket_activity,
     get_ticket_history,
 )
 from app.schemas.events import (
@@ -36,6 +37,10 @@ WORKING = {"in_progress", "in_review"}
 
 async def get_activity_feed(project_id: UUID, limit: int, offset: int, db: AsyncIOMotorDatabase, actor: UUID | None = None) -> PaginatedActivity:
     results, total = await get_activity_page(project_id, limit, offset, db, actor)
+    return PaginatedActivity(count=total, limit=limit, offset=offset, results=results)
+
+async def get_ticket_activity_feed(project_id: UUID, ticket_id: UUID, limit: int, offset: int, db: AsyncIOMotorDatabase) -> PaginatedActivity:
+    results, total = await get_ticket_activity(project_id, ticket_id, limit, offset, db)
     return PaginatedActivity(count=total, limit=limit, offset=offset, results=results)
 
 async def get_who_did_what(project_id: UUID, db: AsyncIOMotorDatabase, actor: UUID | None = None) -> ActivitySummary:

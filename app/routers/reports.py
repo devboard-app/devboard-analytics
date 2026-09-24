@@ -24,6 +24,7 @@ from app.services.reports import (
     get_activity_feed,
     get_burndown,
     get_cycle_time,
+    get_ticket_activity_feed,
     get_velocity,
     get_who_did_what,
 )
@@ -50,6 +51,12 @@ async def activity(
 async def who_did_what(project_id: UUID, db: Db, user_id: CurrentUser, role: Annotated[str, Depends(require_project_member)]) -> ActivitySummary:
     # lead sees everyone, contributor sees only themselves.
     return await get_who_did_what(project_id, db, actor=None if role == "lead" else user_id)
+
+@router.get("/projects/{project_id}/tickets/{ticket_id}/activity/", response_model=PaginatedActivity)
+async def ticket_activity(project_id: UUID, ticket_id: UUID, db: Db, _member: Annotated[str, Depends(require_project_member)], 
+                          limit: Annotated[int, Query(ge=1, le=100)] = 20, offset: Annotated[int, Query(ge=0)] = 0,) -> PaginatedActivity:
+    # Any project member sees everyone's activity on a ticket. The project-wide feed stays scoped by role.
+    return await get_ticket_activity_feed(project_id, ticket_id, limit, offset, db)
 
 
 @router.get("/projects/{project_id}/velocity/", response_model=VelocityReport)

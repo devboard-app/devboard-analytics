@@ -25,5 +25,7 @@ async def ensure_indexes() -> None:
     await db.events.create_index([("project_id", ASCENDING), ("created_at", DESCENDING)])
     await db.events.create_index([("entity_type", ASCENDING), ("entity_id", ASCENDING)])
     await db.events.create_index([("actor", ASCENDING), ("created_at", DESCENDING)])
+    await db.events.create_index([("project_id", ASCENDING), ("entity_id", ASCENDING), ("created_at", DESCENDING)])
+    await db.events.create_index([("project_id", ASCENDING), ("metadata.ticket_id", ASCENDING), ("created_at", DESCENDING)])
 
 
