@@ -56,3 +56,12 @@ async def get_sprint(sprint_id: UUID, db: AsyncIOMotorDatabase) -> ActivityEvent
     if doc is None:
         return None
     return _to_events([doc])[0]
+
+async def get_ticket_activity(project_id: UUID, ticket_id: UUID, limit: int, offset: int, db: AsyncIOMotorDatabase) -> tuple[list[ActivityEvent], int]:
+    """One page of a single ticket's events, newest first: its own events plus its comment
+    events, which are keyed by comment id and point back through metadata.ticket_id."""
+    query = {"project_id": project_id, "$or": [{"entity_id": ticket_id}, {"metadata.ticket_id": ticket_id}]}
+    docs = await db.events.find(query).sort("created_at", -1).skip(offset).limit(limit).to_list(limit)
+    total = await db.events.count_documents(query)
+    return _to_events(docs), total
+    
