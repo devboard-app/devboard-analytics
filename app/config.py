@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     INTERNAL_API_KEY: str
     REDIS_URL: str
     DEVBOARD_WORK_URL: str
+    DEVBOARD_CORE_URL: str
     GEMINI_API_KEY: str
 
 
