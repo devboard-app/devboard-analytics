@@ -42,7 +42,6 @@ register_exception_handlers(app)
 app.include_router(events_router)
 app.include_router(reports_router)
 app.include_router(chat_router)
-app.mount("/", mcp_app)
 
 @app.get("/health")
 async def health():
@@ -56,3 +55,7 @@ async def health_db(db: AsyncIOMotorDatabase = Depends(get_database)):  # noqa: 
         return JSONResponse(status_code=200, content={"status": "ok"})
     except Exception:  # noqa: BLE001
         return JSONResponse(status_code=500, content={"status": "error", "details": "db unavailable"})
+
+
+# Catch-all mount serving /mcp: must stay last, or it shadows routes declared after it.
+app.mount("/", mcp_app)

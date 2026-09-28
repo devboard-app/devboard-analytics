@@ -12,7 +12,8 @@ class Settings(BaseSettings):
     DEVBOARD_WORK_URL: str
     DEVBOARD_CORE_URL: str
     GEMINI_API_KEY: str
-    MCP_RESOURCE_URL: str 
+    MCP_RESOURCE_URL: str
+    MCP_INTERNAL_URL: str
 
 
 
