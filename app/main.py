@@ -14,11 +14,13 @@ from app.database import (
 )
 from app.exception_handlers import register_exception_handlers
 from app.http_client import close_http_client, open_http_client
+from app.mcp_server.server import mcp
 from app.routers.chat import router as chat_router
 from app.routers.events import router as events_router
 from app.routers.reports import router as reports_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(name)s - %(message)s")
+mcp_app = mcp.streamable_http_app(stateless_http=True, json_response=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,7 +28,8 @@ async def lifespan(app: FastAPI):
     await ensure_indexes()
     await open_http_client()
     await connect_to_redis()
-    yield
+    async with mcp.session_manager.run():
+        yield   
     await close_redis_connection()
     await close_http_client()
     await close_mongo_connection()
@@ -39,6 +42,7 @@ register_exception_handlers(app)
 app.include_router(events_router)
 app.include_router(reports_router)
 app.include_router(chat_router)
+app.mount("/", mcp_app)
 
 @app.get("/health")
 async def health():
