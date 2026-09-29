@@ -1,9 +1,17 @@
+import logging
+
 from google import genai
+from google.genai import errors, types
 
 from app.config import settings
+from app.exceptions import ServiceUnavailableException
 
-_client = genai.Client(api_key=settings.GEMINI_API_KEY)
+logger = logging.getLogger(__name__)
 
+_client = genai.Client(api_key=settings.GEMINI_API_KEY,
+                       http_options=types.HttpOptions(timeout=20_000, retry_options=types.HttpRetryOptions(attempts=2)))
+
+MODELS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite"]
 
 async def ask(message: str, tools: list, project_name: str | None = None, role: str = "contributor") -> str:
     label = project_name or "this project"
@@ -33,9 +41,20 @@ async def ask(message: str, tools: list, project_name: str | None = None, role: 
     trivia, other projects). For those, reply with exactly this sentence and nothing else:
     I can only answer questions about {label}'s sprints, velocity and team activity. Try: "How did the last sprint go?"
     """
-    chat = _client.aio.chats.create(
-        model="gemini-3.5-flash-lite",
-        config={"tools": tools, "system_instruction": system_instruction},
-    )
-    response = await chat.send_message(message)
-    return response.text or "I couldn't generate a response - try rephrasing your question."
+    for model in MODELS:
+        chat = _client.aio.chats.create(
+            model=model,
+            config={"tools": tools, "system_instruction": system_instruction},
+        )
+        try:
+            response = await chat.send_message(message)
+        except errors.ServerError:  # 5xx: model overloaded or down
+            logger.warning("Gemini %s unavailable, trying next model", model)
+            continue
+        except errors.ClientError as exc:  # 4xx: only 429 (rate limit) is worth a retry
+            if exc.code != 429:
+                raise
+            logger.warning("Gemini %s rate-limited, trying next model", model)
+            continue
+        return response.text or "I couldn't generate a response - try rephrasing your question."
+    raise ServiceUnavailableException("Assistant")  # all models failed -> 503 "Assistant unavailable."
