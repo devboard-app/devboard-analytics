@@ -2,7 +2,7 @@
 
 **What happened, and how are we doing?** It keeps a log of everything that happens in DevBoard. It builds reports from that log: activity, velocity, burndown and cycle time.
 
-- **Port:** `8006`
+- **Port:** `18006`
 - **Stack:** FastAPI, MongoDB (Motor), Redis Streams
 - **Two containers, one image:**
 
@@ -17,7 +17,7 @@
 
 1. Open a terminal in `devboard-infra`.
 2. Run `setup.bat`. It starts MongoDB, creates the analytics user and starts both containers.
-3. Open `http://localhost:8006/health`. You should see `{"status": "ok"}`.
+3. Open `http://localhost:18006/health`. You should see `{"status": "ok"}`.
 4. Want fake data to try the reports? See "Demo data" below.
 
 Only want this service? MongoDB and Redis must already be running. Then:

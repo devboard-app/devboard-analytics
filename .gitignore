@@ -8,7 +8,10 @@ dist/
 .mypy_cache/
 .ruff_cache
 .vscode
-scripts/
+# Local scripts stay out of git, except the demo seed: devboard-infra's
+# stack.yml runs it as the seed-demo job, so every clone needs it.
+scripts/*
+!scripts/seed_demo.py
 
 # Local-only unit tests (not committed by choice)
 tests/
