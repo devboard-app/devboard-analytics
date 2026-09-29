@@ -13,7 +13,7 @@ services:
     ports:
       - "8006:8000"
     networks:
-      - devboard-network
+      - devboard-ic-network
       
   devboard-analytics-worker:
     build:
@@ -26,9 +26,9 @@ services:
     env_file: .env
     command: python -m app.consumer.worker
     networks:
-      - devboard-network
+      - devboard-ic-network
 
 networks:
-  devboard-network:
-    name: devboard-network
+  devboard-ic-network:
+    name: devboard-ic-network
     external: true
