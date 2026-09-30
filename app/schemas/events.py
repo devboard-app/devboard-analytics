@@ -6,8 +6,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 STATUS_VALUES = {"backlog", "todo", "in_progress", "in_review", "done"}
 
+
 class EmptyMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
 
 class CreatedMetadata(BaseModel):
     story_points: str | None
@@ -19,8 +21,11 @@ class CreatedMetadata(BaseModel):
             raise ValueError(f"Invalid status value: {self.status!r}")
         return self
 
+
 class UpdatedMetadata(BaseModel):
-    field: Literal["status", "priority", "type", "due_date", "title", "description", "story_points"]
+    field: Literal[
+        "status", "priority", "type", "due_date", "title", "description", "story_points"
+    ]
     from_: str | None = Field(default=None, alias="from")
     to: str | None = None
 
@@ -32,25 +37,32 @@ class UpdatedMetadata(BaseModel):
             if self.to is not None and self.to not in STATUS_VALUES:
                 raise ValueError(f"Invalid status value in 'to': {self.to!r}")
         return self
-    
+
+
 class AssignmentMetadata(BaseModel):
     assignee_id: UUID
     assignee_email: str | None = None
+
 
 class EpicMetadata(BaseModel):
     epic_id: UUID
     epic_key: str | None = None
 
+
 class LabelMetadata(BaseModel):
     label_id: UUID
     label_name: str | None = None
 
+
 class SprintMetadata(BaseModel):
     start_date: str | None
     end_date: str | None
+
+
 class SprintAssignmentMetadata(BaseModel):
     sprint_id: UUID
     sprint_name: str | None = None
+
 
 class CommitMetadata(BaseModel):
     commit_sha: str
@@ -58,20 +70,23 @@ class CommitMetadata(BaseModel):
     commit_message: str
     repo: str
 
+
 class CommentMetadata(BaseModel):
     ticket_id: UUID
 
+
 CREATED_ACTIONS = {"ticket.created"}
-UPDATE_ACTIONS = {"ticket.updated"} 
+UPDATE_ACTIONS = {"ticket.updated"}
 ASSIGNMENT_ACTIONS = {"ticket.assigned", "ticket.unassigned"}
 EPIC_ACTIONS = {"ticket.epic_linked", "ticket.epic_unlinked"}
 LABEL_ACTIONS = {"label.applied", "label.removed"}
-SPRINT_ASSIGNMENT_ACTIONS ={"ticket.sprint_added", "ticket.sprint_removed"}
+SPRINT_ASSIGNMENT_ACTIONS = {"ticket.sprint_added", "ticket.sprint_removed"}
 SPRINT_ACTIONS = {"sprint.started", "sprint.completed"}
 COMMIT_ACTIONS = {"ticket.commit_linked"}
 COMMENT_ACTIONS = {"comment.created", "comment.updated", "comment.deleted"}
 
 IGNORED_ACTIONS = {"comment.mentioned"}
+
 
 def expected_entity_type_for(action: str) -> str:
     if action in SPRINT_ACTIONS:
@@ -79,6 +94,8 @@ def expected_entity_type_for(action: str) -> str:
     if action in COMMENT_ACTIONS:
         return "comment"
     return "ticket"
+
+
 class ActivityEvent(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -86,31 +103,54 @@ class ActivityEvent(BaseModel):
     actor: UUID
     actor_email: str | None = None
     action: str
-    entity_type: Literal['ticket', 'comment', 'sprint', 'project']
+    entity_type: Literal["ticket", "comment", "sprint", "project"]
     entity_id: UUID
     entity_key: str
     project_id: UUID
-    metadata: EmptyMetadata | UpdatedMetadata | AssignmentMetadata | EpicMetadata | LabelMetadata | SprintAssignmentMetadata | CommitMetadata | CommentMetadata | SprintMetadata | CreatedMetadata
+    metadata: (
+        EmptyMetadata
+        | UpdatedMetadata
+        | AssignmentMetadata
+        | EpicMetadata
+        | LabelMetadata
+        | SprintAssignmentMetadata
+        | CommitMetadata
+        | CommentMetadata
+        | SprintMetadata
+        | CreatedMetadata
+    )
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
     def check_metadata_matches_action(self):
         expected_type = (
-            CreatedMetadata if self.action in CREATED_ACTIONS else
-            UpdatedMetadata if self.action in UPDATE_ACTIONS else
-            AssignmentMetadata if self.action in ASSIGNMENT_ACTIONS else
-            EpicMetadata if self.action in EPIC_ACTIONS else
-            LabelMetadata if self.action in LABEL_ACTIONS else
-            SprintAssignmentMetadata if self.action in SPRINT_ASSIGNMENT_ACTIONS else
-            SprintMetadata if self.action in SPRINT_ACTIONS else
-            CommitMetadata if self.action in COMMIT_ACTIONS else
-            CommentMetadata if self.action in COMMENT_ACTIONS else
-            EmptyMetadata
+            CreatedMetadata
+            if self.action in CREATED_ACTIONS
+            else UpdatedMetadata
+            if self.action in UPDATE_ACTIONS
+            else AssignmentMetadata
+            if self.action in ASSIGNMENT_ACTIONS
+            else EpicMetadata
+            if self.action in EPIC_ACTIONS
+            else LabelMetadata
+            if self.action in LABEL_ACTIONS
+            else SprintAssignmentMetadata
+            if self.action in SPRINT_ASSIGNMENT_ACTIONS
+            else SprintMetadata
+            if self.action in SPRINT_ACTIONS
+            else CommitMetadata
+            if self.action in COMMIT_ACTIONS
+            else CommentMetadata
+            if self.action in COMMENT_ACTIONS
+            else EmptyMetadata
         )
         if not isinstance(self.metadata, expected_type):
-            raise ValueError(f"'{self.action}' requires {expected_type.__name__} metadata")  # noqa: TRY004
+            raise ValueError(
+                f"'{self.action}' requires {expected_type.__name__} metadata"
+            )  # noqa: TRY004
         expected_entity_type = expected_entity_type_for(self.action)
         if self.entity_type != expected_entity_type:
-            raise ValueError(f"'{self.action}' requires entity_type='{expected_entity_type}', got '{self.entity_type}'")
+            raise ValueError(
+                f"'{self.action}' requires entity_type='{expected_entity_type}', got '{self.entity_type}'"
+            )
         return self
-

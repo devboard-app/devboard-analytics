@@ -1,0 +1,6 @@
+[tool.ruff]
+extend-exclude = ["alembic/versions", "migrations/"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "BLE", "SIM"]
+ignore = ["B008", "BLE001", "SIM102", "B904", "E712"]

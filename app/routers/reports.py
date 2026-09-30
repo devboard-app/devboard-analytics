@@ -34,13 +34,16 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 Db = Annotated[AsyncIOMotorDatabase, Depends(get_database)]
 CurrentUser = Annotated[UUID, Depends(get_current_user_id)]
 
+
 @router.get("/projects/{project_id}/activity/", response_model=PaginatedActivity)
 async def activity(
-    project_id: UUID, db: Db, user_id: CurrentUser,
+    project_id: UUID,
+    db: Db,
+    user_id: CurrentUser,
     role: Annotated[str, Depends(require_project_member)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
-    actor: UUID | None = None
+    actor: UUID | None = None,
 ) -> PaginatedActivity:
     if role != "lead":
         actor = user_id
@@ -48,24 +51,47 @@ async def activity(
 
 
 @router.get("/projects/{project_id}/activity/summary/", response_model=ActivitySummary)
-async def who_did_what(project_id: UUID, db: Db, user_id: CurrentUser, role: Annotated[str, Depends(require_project_member)]) -> ActivitySummary:
+async def who_did_what(
+    project_id: UUID,
+    db: Db,
+    user_id: CurrentUser,
+    role: Annotated[str, Depends(require_project_member)],
+) -> ActivitySummary:
     # lead sees everyone, contributor sees only themselves.
-    return await get_who_did_what(project_id, db, actor=None if role == "lead" else user_id)
+    return await get_who_did_what(
+        project_id, db, actor=None if role == "lead" else user_id
+    )
 
-@router.get("/projects/{project_id}/tickets/{ticket_id}/activity/", response_model=PaginatedActivity)
-async def ticket_activity(project_id: UUID, ticket_id: UUID, db: Db, _member: Annotated[str, Depends(require_project_member)], 
-                          limit: Annotated[int, Query(ge=1, le=100)] = 20, offset: Annotated[int, Query(ge=0)] = 0,) -> PaginatedActivity:
+
+@router.get(
+    "/projects/{project_id}/tickets/{ticket_id}/activity/",
+    response_model=PaginatedActivity,
+)
+async def ticket_activity(
+    project_id: UUID,
+    ticket_id: UUID,
+    db: Db,
+    _member: Annotated[str, Depends(require_project_member)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> PaginatedActivity:
     # Any project member sees everyone's activity on a ticket. The project-wide feed stays scoped by role.
     return await get_ticket_activity_feed(project_id, ticket_id, limit, offset, db)
 
 
 @router.get("/projects/{project_id}/velocity/", response_model=VelocityReport)
-async def velocity(project_id: UUID, db: Db, _lead: Annotated[str, Depends(require_project_lead)]) -> VelocityReport:
+async def velocity(
+    project_id: UUID, db: Db, _lead: Annotated[str, Depends(require_project_lead)]
+) -> VelocityReport:
     return await get_velocity(project_id, db)
 
+
 @router.get("/projects/{project_id}/cycle-time/", response_model=CycleTimeReport)
-async def cycle_time(project_id: UUID, db: Db, _lead: Annotated[str, Depends(require_project_lead)]) -> CycleTimeReport:
+async def cycle_time(
+    project_id: UUID, db: Db, _lead: Annotated[str, Depends(require_project_lead)]
+) -> CycleTimeReport:
     return await get_cycle_time(project_id, db)
+
 
 @router.get("/sprints/{sprint_id}/burndown/", response_model=BurndownReport)
 async def burndown(sprint_id: UUID, db: Db, user_id: CurrentUser) -> BurndownReport:

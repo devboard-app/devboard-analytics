@@ -35,15 +35,28 @@ from app.schemas.reports import (
 DAY_SECONDS = 86400
 WORKING = {"in_progress", "in_review"}
 
-async def get_activity_feed(project_id: UUID, limit: int, offset: int, db: AsyncIOMotorDatabase, actor: UUID | None = None) -> PaginatedActivity:
+
+async def get_activity_feed(
+    project_id: UUID,
+    limit: int,
+    offset: int,
+    db: AsyncIOMotorDatabase,
+    actor: UUID | None = None,
+) -> PaginatedActivity:
     results, total = await get_activity_page(project_id, limit, offset, db, actor)
     return PaginatedActivity(count=total, limit=limit, offset=offset, results=results)
 
-async def get_ticket_activity_feed(project_id: UUID, ticket_id: UUID, limit: int, offset: int, db: AsyncIOMotorDatabase) -> PaginatedActivity:
+
+async def get_ticket_activity_feed(
+    project_id: UUID, ticket_id: UUID, limit: int, offset: int, db: AsyncIOMotorDatabase
+) -> PaginatedActivity:
     results, total = await get_ticket_activity(project_id, ticket_id, limit, offset, db)
     return PaginatedActivity(count=total, limit=limit, offset=offset, results=results)
 
-async def get_who_did_what(project_id: UUID, db: AsyncIOMotorDatabase, actor: UUID | None = None) -> ActivitySummary:
+
+async def get_who_did_what(
+    project_id: UUID, db: AsyncIOMotorDatabase, actor: UUID | None = None
+) -> ActivitySummary:
     rows = await count_by_actor(project_id, db, actor)
 
     buckets: dict[UUID, dict[str, int]] = {}
@@ -52,11 +65,15 @@ async def get_who_did_what(project_id: UUID, db: AsyncIOMotorDatabase, actor: UU
         buckets.setdefault(key["actor"], {})[key["action"]] = row["n"]
 
     actors = [
-        ActorActivity(actor=actor_id, total=sum(actions.values()), by_action=actions) for actor_id, actions in buckets.items()
+        ActorActivity(actor=actor_id, total=sum(actions.values()), by_action=actions)
+        for actor_id, actions in buckets.items()
     ]
     actors.sort(key=lambda a: a.total, reverse=True)
 
-    return ActivitySummary(project_id=project_id, total_events=sum(a.total for a in actors), actors=actors)
+    return ActivitySummary(
+        project_id=project_id, total_events=sum(a.total for a in actors), actors=actors
+    )
+
 
 def _apply_event(states: dict[UUID, dict], event: ActivityEvent) -> None:
     ticket_id = event.entity_id
@@ -64,9 +81,17 @@ def _apply_event(states: dict[UUID, dict], event: ActivityEvent) -> None:
 
     if event.action == "ticket.created" and isinstance(md, CreatedMetadata):
         initial = md.status or "todo"
-        states[ticket_id] = {"key": event.entity_key, "points": int(md.story_points) if md.story_points else None, "status": initial, "sprint": None,
-                             "created_at": event.created_at, "done_at": event.created_at if initial == "done" else None, "reopened": 0, "active_seconds": 0.0,
-                               "entered_working": event.created_at if initial in WORKING else None}
+        states[ticket_id] = {
+            "key": event.entity_key,
+            "points": int(md.story_points) if md.story_points else None,
+            "status": initial,
+            "sprint": None,
+            "created_at": event.created_at,
+            "done_at": event.created_at if initial == "done" else None,
+            "reopened": 0,
+            "active_seconds": 0.0,
+            "entered_working": event.created_at if initial in WORKING else None,
+        }
 
     elif event.action == "ticket.deleted":
         states.pop(ticket_id, None)
@@ -82,7 +107,9 @@ def _apply_event(states: dict[UUID, dict], event: ActivityEvent) -> None:
             state["status"] = now
 
             if was in WORKING and now not in WORKING:
-                state["active_seconds"] += (event.created_at - state["entered_working"]).total_seconds()
+                state["active_seconds"] += (
+                    event.created_at - state["entered_working"]
+                ).total_seconds()
             if now in WORKING and was not in WORKING:
                 state["entered_working"] = event.created_at
             if now == "done":
@@ -93,13 +120,18 @@ def _apply_event(states: dict[UUID, dict], event: ActivityEvent) -> None:
         elif md.field == "story_points":
             states[ticket_id]["points"] = int(md.to) if md.to else None
 
-    elif event.action == "ticket.sprint_added" and isinstance(md, SprintAssignmentMetadata):
+    elif event.action == "ticket.sprint_added" and isinstance(
+        md, SprintAssignmentMetadata
+    ):
         states[ticket_id]["sprint"] = md.sprint_id
 
     elif event.action == "ticket.sprint_removed":
         states[ticket_id]["sprint"] = None
 
-def build_ticket_states(events: list[ActivityEvent], until: datetime | None = None) -> dict[UUID, dict]:
+
+def build_ticket_states(
+    events: list[ActivityEvent], until: datetime | None = None
+) -> dict[UUID, dict]:
     """Turn a list of changes into the current state of every ticket"""
     states: dict[UUID, dict] = {}
     for event in events:
@@ -108,7 +140,10 @@ def build_ticket_states(events: list[ActivityEvent], until: datetime | None = No
         _apply_event(states, event)
     return states
 
-def build_ticket_snapshots(events: list[ActivityEvent], checkpoints: list[datetime]) -> dict[datetime, dict[UUID, dict]]:
+
+def build_ticket_snapshots(
+    events: list[ActivityEvent], checkpoints: list[datetime]
+) -> dict[datetime, dict[UUID, dict]]:
     """Walk events once (oldest first) and take a state snapshot at each checkpoint timestamp."""
     states: dict[UUID, dict] = {}
     snapshots: dict[datetime, dict[UUID, dict]] = {}
@@ -118,9 +153,12 @@ def build_ticket_snapshots(events: list[ActivityEvent], checkpoints: list[dateti
         while idx < len(events) and events[idx].created_at <= checkpoint:
             _apply_event(states, events[idx])
             idx += 1
-        snapshots[checkpoint] = {ticket_id: dict(state) for ticket_id, state in states.items()}
+        snapshots[checkpoint] = {
+            ticket_id: dict(state) for ticket_id, state in states.items()
+        }
 
     return snapshots
+
 
 async def get_velocity(project_id: UUID, db: AsyncIOMotorDatabase) -> VelocityReport:
     """How many points each sprint took on, and how many it delivered.
@@ -171,27 +209,38 @@ async def get_velocity(project_id: UUID, db: AsyncIOMotorDatabase) -> VelocityRe
         sprint_id = sprint.entity_id
         at_start = snapshots[sprint.created_at]
 
-        committed = sum(t["points"] or 0 for t in at_start.values() if t["sprint"] == sprint_id)
-        done = [t for t in final.values() if t["sprint"] == sprint_id and t["status"] == "done"]
+        committed = sum(
+            t["points"] or 0 for t in at_start.values() if t["sprint"] == sprint_id
+        )
+        done = [
+            t
+            for t in final.values()
+            if t["sprint"] == sprint_id and t["status"] == "done"
+        ]
 
-        rows.append(SprintVelocity(
-            sprint_id=sprint.entity_id,
-            sprint_name=sprint.entity_key,
-            start_date=date.fromisoformat(md.start_date) if md.start_date else None,
-            end_date=date.fromisoformat(md.end_date) if md.end_date else None,
-            committed_points=committed,
-            completed_points=sum(t["points"] or 0 for t in done),
-            completed_tickets=len(done),
-        ))
+        rows.append(
+            SprintVelocity(
+                sprint_id=sprint.entity_id,
+                sprint_name=sprint.entity_key,
+                start_date=date.fromisoformat(md.start_date) if md.start_date else None,
+                end_date=date.fromisoformat(md.end_date) if md.end_date else None,
+                committed_points=committed,
+                completed_points=sum(t["points"] or 0 for t in done),
+                completed_tickets=len(done),
+            )
+        )
 
     average = sum(r.completed_points for r in rows) / len(rows) if rows else 0.0
     report = VelocityReport(project_id=project_id, sprints=rows, average_points=average)
     await set_cached_report(cache_key, report.model_dump_json())
     return report
 
-async def get_burndown(sprint: ActivityEvent, db: AsyncIOMotorDatabase) -> BurndownReport:
+
+async def get_burndown(
+    sprint: ActivityEvent, db: AsyncIOMotorDatabase
+) -> BurndownReport:
     """Remaining work per day of a sprint, nex to the ideal line
-        remaining_points(real line) + ideal_points (guideline) vs time"""
+    remaining_points(real line) + ideal_points (guideline) vs time"""
     md = sprint.metadata
     if not isinstance(md, SprintMetadata) or not md.start_date or not md.end_date:
         raise SprintWindowMissingException
@@ -207,7 +256,7 @@ async def get_burndown(sprint: ActivityEvent, db: AsyncIOMotorDatabase) -> Burnd
 
     events = await get_ticket_history(sprint.project_id, db)
 
-    all_days: list[date] =[]
+    all_days: list[date] = []
     day = start
     while day <= end:
         all_days.append(day)
@@ -215,11 +264,15 @@ async def get_burndown(sprint: ActivityEvent, db: AsyncIOMotorDatabase) -> Burnd
 
     today = datetime.now(timezone.utc).date()
     counted_days = [d for d in all_days if d <= today]
-    cutoffs = [datetime.combine(d, time.max, tzinfo=timezone.utc) for d in counted_days]  # each day 23:59:59.999
+    cutoffs = [
+        datetime.combine(d, time.max, tzinfo=timezone.utc) for d in counted_days
+    ]  # each day 23:59:59.999
 
     snapshots = build_ticket_snapshots(events, [sprint.created_at] + cutoffs)
     at_start = snapshots[sprint.created_at]
-    committed = sum(t["points"] or 0 for t in at_start.values() if t["sprint"] == sprint.entity_id)
+    committed = sum(
+        t["points"] or 0 for t in at_start.values() if t["sprint"] == sprint.entity_id
+    )
 
     work_days = [d for d in all_days if d.weekday() < 5]
     steps = max(len(work_days) - 1, 1)
@@ -237,12 +290,14 @@ async def get_burndown(sprint: ActivityEvent, db: AsyncIOMotorDatabase) -> Burnd
         in_sprint = [t for t in states.values() if t["sprint"] == sprint.entity_id]
         open_tickets = [t for t in in_sprint if t["status"] != "done"]
 
-        days.append(BurndownDay(
-            day=current,
-            remaining_points=sum(t["points"] or 0 for t in open_tickets),
-            remaining_tickets=len(open_tickets),
-            ideal_points=ideal_for(current),
-        ))
+        days.append(
+            BurndownDay(
+                day=current,
+                remaining_points=sum(t["points"] or 0 for t in open_tickets),
+                remaining_tickets=len(open_tickets),
+                ideal_points=ideal_for(current),
+            )
+        )
         unpointed = sum(1 for t in in_sprint if t["points"] is None)
 
     report = BurndownReport(
@@ -252,10 +307,11 @@ async def get_burndown(sprint: ActivityEvent, db: AsyncIOMotorDatabase) -> Burnd
         end_date=end,
         committed_points=committed,
         unpointed_tickets=unpointed,
-        days=days
+        days=days,
     )
     await set_cached_report(cache_key, report.model_dump_json())
     return report
+
 
 async def get_cycle_time(project_id: UUID, db: AsyncIOMotorDatabase) -> CycleTimeReport:
     """How long a ticket take: waiting (lead time) vs actually worked on (cycle time)"""
@@ -270,14 +326,20 @@ async def get_cycle_time(project_id: UUID, db: AsyncIOMotorDatabase) -> CycleTim
     rows: list[TicketCycleTime] = []
     for t in states.values():
         if t["done_at"] is None:
-            continue # never finished, so no need to measure 
+            continue  # never finished, so no need to measure
 
-        rows.append(TicketCycleTime(
-            ticket_key=t["key"],
-            lead_time_days=round((t["done_at"] - t["created_at"]).total_seconds() / DAY_SECONDS, 2),
-            cycle_time_days=round((t["active_seconds"]) / DAY_SECONDS, 2) if t["active_seconds"] else None,
-            reopened=t["reopened"],
-        ))
+        rows.append(
+            TicketCycleTime(
+                ticket_key=t["key"],
+                lead_time_days=round(
+                    (t["done_at"] - t["created_at"]).total_seconds() / DAY_SECONDS, 2
+                ),
+                cycle_time_days=round((t["active_seconds"]) / DAY_SECONDS, 2)
+                if t["active_seconds"]
+                else None,
+                reopened=t["reopened"],
+            )
+        )
     rows.sort(key=lambda r: r.lead_time_days, reverse=True)
 
     leads = [r.lead_time_days for r in rows]

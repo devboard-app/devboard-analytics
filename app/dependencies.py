@@ -17,11 +17,15 @@ from app.http_client import get_http_client
 
 logger = logging.getLogger(__name__)
 
+
 async def verify_internal_key(x_service_key: Annotated[str, Header(...)]):
     if not hmac.compare_digest(x_service_key, settings.INTERNAL_API_KEY):
         raise ForbiddenException
 
-async def get_current_user_id(authorization: Annotated[str | None, Header(...)] = None) -> UUID:
+
+async def get_current_user_id(
+    authorization: Annotated[str | None, Header(...)] = None,
+) -> UUID:
     if authorization is None or not authorization.startswith("Bearer "):
         raise UnauthorizedException
     try:
@@ -32,7 +36,8 @@ async def get_current_user_id(authorization: Annotated[str | None, Header(...)] 
         )
         return UUID(payload["sub"])
     except (JWTError, KeyError, ValueError):
-        raise UnauthorizedException 
+        raise UnauthorizedException
+
 
 async def get_project_role(user_id: UUID, project_id: UUID) -> str:
     try:
@@ -50,14 +55,19 @@ async def get_project_role(user_id: UUID, project_id: UUID) -> str:
 
     if response.status_code != 200:
         raise ForbiddenException
-    
+
     return response.json()["role"]
 
 
-async def require_project_member(project_id: UUID, user_id: Annotated[UUID, Depends(get_current_user_id)]) -> str:
+async def require_project_member(
+    project_id: UUID, user_id: Annotated[UUID, Depends(get_current_user_id)]
+) -> str:
     return await get_project_role(user_id, project_id)
 
-async def require_project_lead(project_id: UUID, user_id: Annotated[UUID, Depends(get_current_user_id)]) -> str:
+
+async def require_project_lead(
+    project_id: UUID, user_id: Annotated[UUID, Depends(get_current_user_id)]
+) -> str:
     role = await get_project_role(user_id, project_id)
     if role != "lead":
         raise ForbiddenException

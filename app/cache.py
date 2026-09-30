@@ -5,7 +5,9 @@ from redis.asyncio import Redis
 
 from app.config import settings
 
-REPORT_CACHE_TTL_SECONDS = 600  # backstop only -- normal invalidation is bump_report_version below
+REPORT_CACHE_TTL_SECONDS = (
+    600  # backstop only -- normal invalidation is bump_report_version below
+)
 
 client: Redis | None = None
 

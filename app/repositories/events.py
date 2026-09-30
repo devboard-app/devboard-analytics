@@ -14,7 +14,10 @@ async def insert_event(event: ActivityEvent, db: AsyncIOMotorDatabase) -> Activi
         pass
     return event
 
-async def get_recent_events(db:AsyncIOMotorDatabase, limit: int = 10) -> list[ActivityEvent]:
+
+async def get_recent_events(
+    db: AsyncIOMotorDatabase, limit: int = 10
+) -> list[ActivityEvent]:
     docs = await db.events.find().sort("created_at", -1).limit(limit).to_list(limit)
     for doc in docs:
         doc["_id"] = str(doc["_id"])

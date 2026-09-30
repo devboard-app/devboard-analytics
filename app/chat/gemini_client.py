@@ -8,17 +8,27 @@ from app.exceptions import ServiceUnavailableException
 
 logger = logging.getLogger(__name__)
 
-_client = genai.Client(api_key=settings.GEMINI_API_KEY,
-                       http_options=types.HttpOptions(timeout=20_000, retry_options=types.HttpRetryOptions(attempts=2)))
+_client = genai.Client(
+    api_key=settings.GEMINI_API_KEY,
+    http_options=types.HttpOptions(
+        timeout=20_000, retry_options=types.HttpRetryOptions(attempts=2)
+    ),
+)
 
 MODELS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite"]
 
-async def ask(message: str, tools: list, project_name: str | None = None, role: str = "contributor") -> str:
+
+async def ask(
+    message: str,
+    tools: list,
+    project_name: str | None = None,
+    role: str = "contributor",
+) -> str:
     label = project_name or "this project"
     access = (
         "The user is a project lead: they can see velocity, burndown and everyone's activity."
-        if role == "lead" else
-        "The user is a contributor: they can only see their own activity. Velocity and burndown "
+        if role == "lead"
+        else "The user is a contributor: they can only see their own activity. Velocity and burndown "
         "are for project leads. If asked for them, say so in one sentence and offer to summarize "
         "the user's own activity instead."
     )
@@ -56,5 +66,10 @@ async def ask(message: str, tools: list, project_name: str | None = None, role: 
                 raise
             logger.warning("Gemini %s rate-limited, trying next model", model)
             continue
-        return response.text or "I couldn't generate a response - try rephrasing your question."
-    raise ServiceUnavailableException("Assistant")  # all models failed -> 503 "Assistant unavailable."
+        return (
+            response.text
+            or "I couldn't generate a response - try rephrasing your question."
+        )
+    raise ServiceUnavailableException(
+        "Assistant"
+    )  # all models failed -> 503 "Assistant unavailable."

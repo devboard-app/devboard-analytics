@@ -11,6 +11,7 @@ from app.services.reports import get_burndown, get_velocity, get_who_did_what
 
 logger = logging.getLogger(__name__)
 
+
 async def _usernames(ids: list[str], authorization: str) -> dict[str, str]:
     """user_id -> username via devboard-core. On failure, returns {} so the chat still answers."""
     if not ids:
@@ -27,7 +28,14 @@ async def _usernames(ids: list[str], authorization: str) -> dict[str, str]:
         logger.warning("username lookup failed", exc_info=True)
         return {}
 
-def make_tools(db: AsyncIOMotorDatabase, project_id: UUID, user_id: UUID, role: str, authorization: str):
+
+def make_tools(
+    db: AsyncIOMotorDatabase,
+    project_id: UUID,
+    user_id: UUID,
+    role: str,
+    authorization: str,
+):
     """Gemini-callable tools scoped to one project/user/role via closure.
     The LLM only ever supplies IDs it's given in context — it never sees
     or controls db access, actor scoping, or role checks."""
